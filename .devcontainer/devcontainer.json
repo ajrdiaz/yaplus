@@ -1,0 +1,80 @@
+{
+    "name": "Laravel 11 + Inertia + Vue.js",
+    "dockerComposeFile": "docker-compose.yml",
+    "service": "app",
+    "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+    "features": {
+        "ghcr.io/devcontainers/features/node:1": {
+            "version": "20"
+        },
+        "ghcr.io/devcontainers/features/git:1": {},
+        "ghcr.io/devcontainers/features/github-cli:1": {}
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "bmewburn.vscode-intelephense-client",
+                "bradlc.vscode-tailwindcss",
+                "Vue.volar",
+                "ms-vscode.vscode-typescript-next",
+                "formulahendry.auto-rename-tag",
+                "christian-kohler.path-intellisense",
+                "redhat.vscode-yaml",
+                "esbenp.prettier-vscode",
+                "EditorConfig.EditorConfig",
+                "xdebug.php-debug"
+            ],
+            "settings": {
+                "php.validate.executablePath": "/usr/local/bin/php",
+                "intelephense.files.maxSize": 5000000,
+                "editor.formatOnSave": true,
+                "editor.defaultFormatter": "esbenp.prettier-vscode",
+                "[php]": {
+                    "editor.defaultFormatter": "bmewburn.vscode-intelephense-client"
+                },
+                "emmet.includeLanguages": {
+                    "vue": "html",
+                    "blade": "html"
+                },
+                "files.watcherExclude": {
+                    "**/node_modules/**": true,
+                    "**/vendor/**": true,
+                    "**/.vite/**": true,
+                    "**/storage/framework/**": true
+                },
+                "search.exclude": {
+                    "**/node_modules": true,
+                    "**/vendor": true,
+                    "**/.vite": true
+                }
+            }
+        }
+    },
+    "forwardPorts": [
+        8000,
+        3000,
+        5173,
+        9000
+    ],
+    "portsAttributes": {
+        "8000": {
+            "label": "Laravel App",
+            "onAutoForward": "notify"
+        },
+        "3000": {
+            "label": "Node.js",
+            "onAutoForward": "silent"
+        },
+        "5173": {
+            "label": "Vite Dev Server",
+            "onAutoForward": "notify"
+        },
+        "9000": {
+            "label": "Xdebug",
+            "onAutoForward": "silent"
+        }
+    },
+    "postCreateCommand": "bash -c 'sleep 2 && cd /workspaces/${localWorkspaceFolderBasename} && sudo chown -R vscode:vscode . && [ -f composer.json ] && composer install && if [ ! -d node_modules ] || [ ! \"$(ls -A node_modules 2>/dev/null)\" ]; then echo \"📦 Instalando node_modules...\" && npm install; else echo \"✅ node_modules ya existe, saltando instalación\"; fi && php artisan key:generate --ansi'",
+    //"postStartCommand": "",
+    "remoteUser": "vscode"
+}

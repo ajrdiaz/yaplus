@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+    app:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        volumes:
+            - ../..:/workspaces:cached
+            - node_modules_volume:/workspaces/${WORKSPACE_NAME}/node_modules
+            - vendor_volume:/workspaces/${WORKSPACE_NAME}/vendor
+            - composer_cache:/home/vscode/.composer
+        command: sleep infinity
+        networks:
+            - laravel
+
+volumes:
+    composer_cache:
+    node_modules_volume:
+    vendor_volume:
+
+networks:
+    laravel:
+        driver: bridge
