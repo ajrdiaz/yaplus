@@ -22,6 +22,7 @@ Route::middleware([
         Route::get('/', [YoutubeController::class, 'index'])->name('index');
         Route::post('/import', [YoutubeController::class, 'importComments'])->name('import');
         Route::get('/videos/{video}/comments', [YoutubeController::class, 'getVideoComments'])->name('video.comments');
+        Route::put('/videos/{video}/context', [YoutubeController::class, 'updateContext'])->name('video.updateContext');
         Route::delete('/videos/{video}', [YoutubeController::class, 'destroyVideo'])->name('video.destroy');
         Route::delete('/comments/{comment}', [YoutubeController::class, 'destroy'])->name('destroy');
         Route::get('/stats', [YoutubeController::class, 'stats'])->name('stats');

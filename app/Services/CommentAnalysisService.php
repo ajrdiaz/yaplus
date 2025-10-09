@@ -10,11 +10,12 @@ use Illuminate\Support\Facades\Log;
 class CommentAnalysisService
 {
     private ?string $apiKey;
-    private string $model = 'gpt-4o-mini'; // Modelo más económico y rápido
+    private string $model;
 
     public function __construct()
     {
         $this->apiKey = config('services.openai.api_key');
+        $this->model = config('services.openai.model', 'gpt-4o-mini'); // Modelo configurable desde .env
     }
 
     /**
@@ -81,7 +82,8 @@ class CommentAnalysisService
     public function analyzeVideoComments($videoId, $limit = null)
     {
         $query = YoutubeComment::where('youtube_video_id', $videoId)
-            ->whereDoesntHave('analysis');
+            ->whereDoesntHave('analysis')
+            ->whereRaw('LENGTH(text_original) > 20'); // Filtrar comentarios muy cortos
 
         if ($limit) {
             $query->limit($limit);
@@ -90,8 +92,15 @@ class CommentAnalysisService
         $comments = $query->get();
         $analyzed = 0;
         $errors = 0;
+        $skipped = 0;
 
         foreach ($comments as $comment) {
+            // Doble verificación por si acaso
+            if (strlen($comment->text_original) <= 20) {
+                $skipped++;
+                continue;
+            }
+
             $analysis = $this->analyzeComment($comment);
             
             if ($analysis) {
@@ -107,6 +116,7 @@ class CommentAnalysisService
         return [
             'total' => $comments->count(),
             'analyzed' => $analyzed,
+            'skipped' => $skipped,
             'errors' => $errors,
         ];
     }
@@ -116,7 +126,38 @@ class CommentAnalysisService
      */
     private function buildPrompt(YoutubeComment $comment): string
     {
-        return "Analiza el siguiente comentario de YouTube:\n\n" .
+        $video = $comment->video;
+        $contextInfo = '';
+        
+        // Agregar contexto de negocio si está disponible
+        if ($video && ($video->product_name || $video->target_audience || $video->research_goal)) {
+            $contextInfo = "\n--- CONTEXTO DEL NEGOCIO ---\n";
+            
+            if ($video->product_name) {
+                $contextInfo .= "Producto/Servicio: {$video->product_name}\n";
+            }
+            
+            if ($video->product_description) {
+                $contextInfo .= "Descripción: {$video->product_description}\n";
+            }
+            
+            if ($video->target_audience) {
+                $contextInfo .= "Audiencia objetivo: {$video->target_audience}\n";
+            }
+            
+            if ($video->research_goal) {
+                $contextInfo .= "Objetivo de investigación: {$video->research_goal}\n";
+            }
+            
+            if ($video->additional_context) {
+                $contextInfo .= "Contexto adicional: {$video->additional_context}\n";
+            }
+            
+            $contextInfo .= "--- FIN CONTEXTO ---\n\n";
+        }
+        
+        return $contextInfo .
+               "Analiza el siguiente comentario de YouTube:\n\n" .
                "Autor: {$comment->author}\n" .
                "Comentario: {$comment->text_original}\n" .
                "Likes: {$comment->like_count}\n\n" .
@@ -128,11 +169,11 @@ class CommentAnalysisService
                '  "is_relevant": true|false,' . "\n" .
                '  "keywords": ["palabra1", "palabra2", ...],' . "\n" .
                '  "insights": {' . "\n" .
-               '    "buyer_insight": "Qué revela sobre el buyer persona",' . "\n" .
-               '    "pain_point": "Punto de dolor específico si aplica",' . "\n" .
-               '    "opportunity": "Oportunidad de negocio si la hay"' . "\n" .
+               '    "buyer_insight": "Qué revela sobre el buyer persona para este producto específico",' . "\n" .
+               '    "pain_point": "Punto de dolor específico relacionado con el producto/audiencia",' . "\n" .
+               '    "opportunity": "Oportunidad de negocio específica para este contexto"' . "\n" .
                '  },' . "\n" .
-               '  "analysis": "Análisis breve del comentario"' . "\n" .
+               '  "analysis": "Análisis del comentario EN RELACIÓN al producto/audiencia mencionada"' . "\n" .
                "}";
     }
 
@@ -142,7 +183,10 @@ class CommentAnalysisService
     private function getSystemPrompt(): string
     {
         return "Eres un experto en análisis de buyer persona y customer research. " .
-               "Tu trabajo es analizar comentarios de YouTube para identificar:\n\n" .
+               "Tu trabajo es analizar comentarios de YouTube para identificar insights valiosos.\n\n" .
+               "IMPORTANTE: Si se proporciona contexto del negocio (producto, audiencia, objetivo), " .
+               "debes analizar el comentario EN RELACIÓN a ese contexto específico.\n\n" .
+               "Categorías de análisis:\n" .
                "1. NECESIDADES: Qué necesita el usuario, qué busca\n" .
                "2. DOLORES: Problemas, frustraciones, quejas\n" .
                "3. SUEÑOS: Aspiraciones, deseos, objetivos\n" .
@@ -150,9 +194,12 @@ class CommentAnalysisService
                "5. PREGUNTAS: Dudas específicas sobre el producto/servicio\n" .
                "6. EXPERIENCIAS: Positivas o negativas con productos similares\n" .
                "7. SUGERENCIAS: Ideas de mejora o nuevas features\n\n" .
-               "Evalúa la relevancia del comentario para investigación de mercado (1-10).\n" .
-               "Marca como 'is_relevant: true' solo si el comentario tiene información valiosa para el buyer persona.\n" .
-               "Extrae keywords importantes relacionadas con el negocio.\n" .
+               "Evalúa la relevancia del comentario (1-10) considerando:\n" .
+               "- ¿Qué tan útil es para entender al buyer persona del producto específico?\n" .
+               "- ¿Revela información accionable para el objetivo de investigación?\n\n" .
+               "Marca 'is_relevant: true' solo si el comentario tiene información valiosa " .
+               "para el contexto de negocio proporcionado.\n\n" .
+               "Extrae keywords importantes relacionadas con el producto/audiencia objetivo.\n" .
                "Responde SIEMPRE en formato JSON válido.";
     }
 

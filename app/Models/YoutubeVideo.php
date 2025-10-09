@@ -23,6 +23,12 @@ class YoutubeVideo extends Model
         'like_count',
         'comment_count',
         'published_at',
+        // Contexto de negocio
+        'product_name',
+        'product_description',
+        'target_audience',
+        'research_goal',
+        'additional_context',
     ];
 
     protected $casts = [
@@ -38,6 +44,14 @@ class YoutubeVideo extends Model
     public function comments(): HasMany
     {
         return $this->hasMany(YoutubeComment::class);
+    }
+
+    /**
+     * Obtener los análisis de IA del video
+     */
+    public function analyses(): HasMany
+    {
+        return $this->hasMany(YoutubeCommentAnalysis::class);
     }
 
     /**

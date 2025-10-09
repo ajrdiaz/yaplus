@@ -362,7 +362,7 @@ class YoutubeController extends Controller
      */
     public function index()
     {
-        $videos = YoutubeVideo::withCount('comments')
+        $videos = YoutubeVideo::withCount(['comments', 'analyses'])
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
@@ -431,6 +431,12 @@ class YoutubeController extends Controller
             'video_url' => 'required|string',
             'max_results' => 'nullable|integer|min:1',
             'import_all' => 'nullable|boolean',
+            // Contexto de negocio (opcional)
+            'product_name' => 'nullable|string|max:255',
+            'product_description' => 'nullable|string',
+            'target_audience' => 'nullable|string',
+            'research_goal' => 'nullable|string',
+            'additional_context' => 'nullable|string',
         ]);
 
         $videoUrl = $request->input('video_url');
@@ -494,6 +500,12 @@ class YoutubeController extends Controller
                     'like_count' => $videoStats['likeCount'] ?? 0,
                     'comment_count' => $videoStats['commentCount'] ?? 0,
                     'published_at' => $videoSnippet['publishedAt'],
+                    // Contexto de negocio
+                    'product_name' => $request->input('product_name'),
+                    'product_description' => $request->input('product_description'),
+                    'target_audience' => $request->input('target_audience'),
+                    'research_goal' => $request->input('research_goal'),
+                    'additional_context' => $request->input('additional_context'),
                 ]
             );
 
@@ -765,6 +777,52 @@ class YoutubeController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al filtrar análisis',
+            ], 500);
+        }
+    }
+
+    /**
+     * Actualizar el contexto de negocio de un video
+     *
+     * @param \Illuminate\Http\Request $request
+     * @param \App\Models\YoutubeVideo $video
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function updateContext(Request $request, YoutubeVideo $video)
+    {
+        try {
+            $validated = $request->validate([
+                'product_name' => 'nullable|string|max:255',
+                'product_description' => 'nullable|string',
+                'target_audience' => 'nullable|string',
+                'research_goal' => 'nullable|string',
+                'additional_context' => 'nullable|string',
+            ]);
+
+            $video->update($validated);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Contexto de negocio actualizado correctamente',
+                'video' => $video,
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error de validación',
+                'errors' => $e->errors(),
+            ], 422);
+
+        } catch (\Exception $e) {
+            Log::error('Error al actualizar contexto de video', [
+                'video_id' => $video->id,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar el contexto de negocio',
             ], 500);
         }
     }
