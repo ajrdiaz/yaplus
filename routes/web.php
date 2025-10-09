@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\External\YoutubeController;
+use App\Http\Controllers\External\GoogleFormsController;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -31,6 +32,19 @@ Route::middleware([
         Route::post('/analyze', [YoutubeController::class, 'analyzeComments'])->name('analyze');
         Route::get('/videos/{video}/analysis', [YoutubeController::class, 'getAnalysis'])->name('video.analysis');
         Route::post('/analysis/filter', [YoutubeController::class, 'filterAnalysis'])->name('analysis.filter');
+    });
+
+    // Google Forms Routes
+    Route::prefix('google-forms')->name('forms.')->group(function () {
+        Route::get('/', [GoogleFormsController::class, 'index'])->name('index');
+        Route::post('/import', [GoogleFormsController::class, 'importResponses'])->name('import');
+        Route::get('/surveys/{survey}/responses', [GoogleFormsController::class, 'getSurveyResponses'])->name('survey.responses');
+        Route::put('/surveys/{survey}/context', [GoogleFormsController::class, 'updateContext'])->name('survey.updateContext');
+        Route::delete('/surveys/{survey}', [GoogleFormsController::class, 'destroy'])->name('survey.destroy');
+        
+        // AI Analysis Routes
+        Route::post('/analyze', [GoogleFormsController::class, 'analyzeResponses'])->name('analyze');
+        Route::get('/surveys/{survey}/analysis', [GoogleFormsController::class, 'getAnalysis'])->name('survey.analysis');
     });
 });
 

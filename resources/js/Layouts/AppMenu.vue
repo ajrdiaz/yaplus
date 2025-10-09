@@ -25,6 +25,12 @@ const model = ref([
                 to: '/youtube',
                 route: route("youtube.index"),
             },
+            {
+                label: 'Google Forms',
+                icon: 'pi pi-fw pi-google',
+                to: '/google-forms',
+                route: route("forms.index"),
+            },
         ]
     },
 ]);
