@@ -22,7 +22,7 @@ class FormAnalysisService
     /**
      * Analizar todas las respuestas de un formulario
      */
-    public function analyzeSurveyResponses($surveyId, $limit = null)
+    public function analyzeSurveyResponses($surveyId, $limit = null, $progressCallback = null)
     {
         $query = FormResponse::where('form_survey_id', $surveyId)
             ->whereDoesntHave('analysis')
@@ -50,6 +50,11 @@ class FormAnalysisService
                 $analyzed++;
             } else {
                 $errors++;
+            }
+
+            // Llamar al callback de progreso si existe
+            if ($progressCallback && is_callable($progressCallback)) {
+                $progressCallback();
             }
 
             // Pausa para no saturar la API
@@ -171,20 +176,26 @@ class FormAnalysisService
         return $contextInfo .
                "Analiza la siguiente respuesta de encuesta:\n\n" .
                "Respuesta: {$response->combined_text}\n\n" .
-               "Responde ÚNICAMENTE en formato JSON con esta estructura:\n" .
+               "Responde ÚNICAMENTE en formato JSON válido con esta estructura EXACTA:\n" .
                "{\n" .
-               '  "category": "necesidad|dolor|sueño|objecion|pregunta|experiencia_positiva|experiencia_negativa|sugerencia|otro",' . "\n" .
-               '  "sentiment": "positivo|negativo|neutral",' . "\n" .
-               '  "relevance_score": 1-10,' . "\n" .
-               '  "is_relevant": true|false,' . "\n" .
-               '  "keywords": ["palabra1", "palabra2", ...],' . "\n" .
+               '  "category": "<UNA de estas opciones: necesidad, dolor, sueño, objecion, pregunta, experiencia_positiva, experiencia_negativa, sugerencia, otro>",' . "\n" .
+               '  "sentiment": "<UNA de estas opciones: positivo, negativo, neutral>",' . "\n" .
+               '  "relevance_score": <número del 1 al 10>,' . "\n" .
+               '  "is_relevant": <true o false>,' . "\n" .
+               '  "keywords": ["palabra1", "palabra2", "palabra3"],' . "\n" .
                '  "insights": {' . "\n" .
                '    "buyer_insight": "insight principal del buyer persona",' . "\n" .
                '    "pain_point": "punto de dolor identificado",' . "\n" .
                '    "opportunity": "oportunidad de negocio"' . "\n" .
                '  },' . "\n" .
                '  "analysis": "análisis detallado de la respuesta"' . "\n" .
-               "}";
+               "}\n\n" .
+               "IMPORTANTE: \n" .
+               "- Para 'category', debes elegir SOLO UNA palabra de la lista\n" .
+               "- Para 'sentiment', debes elegir SOLO UNA palabra: positivo, negativo o neutral\n" .
+               "- NO uses pipes (|) ni incluyas todas las opciones\n" .
+               "- Ejemplo correcto: \"category\": \"necesidad\"\n" .
+               "- Ejemplo INCORRECTO: \"category\": \"necesidad|dolor|sueño\"";
     }
 
     /**
