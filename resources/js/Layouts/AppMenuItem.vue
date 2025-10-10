@@ -84,8 +84,11 @@ watch(() => route.path, handleRouteChange);
 watch(
     () => route.path,
     (newPath) => {
-        if (!(isSlim.value || isSlimPlus.value || isHorizontal.value) && props.item.to && props.item.to === newPath) {
-            setActiveMenuItem(itemKey);
+        if (!(isSlim.value || isSlimPlus.value || isHorizontal.value) && props.item.to) {
+            // Verificar si la ruta actual coincide exactamente o es una subruta
+            if (props.item.to === newPath || newPath.startsWith(props.item.to + '/')) {
+                setActiveMenuItem(itemKey);
+            }
         } else if (isSlim.value || isSlimPlus.value || isHorizontal.value) {
             isActiveMenu.value = false;
         }
@@ -141,8 +144,11 @@ const itemClick = async (event, item) => {
 };
 
 function handleRouteChange(newPath) {
-    if (!(isSlim.value || isSlimPlus.value || isHorizontal.value) && props.item.to && props.item.to === newPath) {
-        setActiveMenuItem(itemKey);
+    if (!(isSlim.value || isSlimPlus.value || isHorizontal.value) && props.item.to && newPath) {
+        // Verificar si la ruta actual coincide exactamente o es una subruta
+        if (props.item.to === newPath || newPath.startsWith(props.item.to + '/')) {
+            setActiveMenuItem(itemKey);
+        }
     } else if (isSlim.value || isSlimPlus.value || isHorizontal.value) {
         isActiveMenu.value = false;
     }
@@ -183,7 +189,8 @@ const calculatePosition = (overlay, target) => {
 
 const checkActiveRoute = (item) => {
     const itemURL = new URL(item.route);
-    return route.url === itemURL.pathname;
+    // Verificar si la ruta actual coincide exactamente o es una subruta
+    return route.url === itemURL.pathname || route.url.startsWith(itemURL.pathname + '/');
 };
 </script>
 
