@@ -15,7 +15,7 @@ import Chart from 'primevue/chart';
 import ProgressBar from 'primevue/progressbar';
 
 const props = defineProps({
-    survey: {
+    video: {
         type: Object,
         required: true
     },
@@ -78,7 +78,7 @@ const filteredAnalyses = computed(() => {
         const query = searchQuery.value.toLowerCase();
         filtered = filtered.filter(a => 
             a.ia_analysis?.toLowerCase().includes(query) ||
-            a.response?.combined_text?.toLowerCase().includes(query)
+            a.comment?.text?.toLowerCase().includes(query)
         );
     }
 
@@ -238,7 +238,7 @@ function getCategorySeverity(category) {
 }
 
 function goBack() {
-    router.visit(route('forms.index'));
+    router.visit(route('youtube.index'));
 }
 
 function formatDate(dateString) {
@@ -259,7 +259,7 @@ async function generateBuyerPersonas() {
     
     try {
         // Usar axios que está configurado en bootstrap.js con CSRF
-        const response = await window.axios.post(route('forms.survey.buyerPersonas', props.survey.id));
+        const response = await window.axios.post(route('youtube.video.buyerPersonas', props.video.id));
         
         if (response.data.success) {
             buyerPersonas.value = response.data.personas;
@@ -313,15 +313,15 @@ function getPriorityIcon(priority) {
                                 @click="goBack"
                                 class="mr-3"
                             />
-                            <span class="text-2xl font-bold">{{ survey.title }}</span>
+                            <span class="text-2xl font-bold">{{ video.title }}</span>
                         </div>
                         <div class="flex gap-2">
-                            <Tag :value="`${survey.responses_count} respuestas`" severity="info" />
-                            <Tag :value="`${analyses.length} analizadas`" severity="success" />
+                            <Tag :value="`${video.comments_count} comentarios`" severity="info" />
+                            <Tag :value="`${analyses.length} analizados`" severity="success" />
                         </div>
                     </div>
-                    <div v-if="survey.description" class="mt-2 text-600">
-                        {{ survey.description }}
+                    <div v-if="video.channel_title" class="mt-2 text-600">
+                        Canal: {{ video.channel_title }}
                     </div>
                 </template>
             </Card>
@@ -503,14 +503,14 @@ function getPriorityIcon(priority) {
                                 responsiveLayout="scroll"
                                 class="p-datatable-sm"
                             >
-                                <Column header="Respuesta" style="min-width: 300px">
+                                <Column header="Comentario" style="min-width: 300px">
                                     <template #body="{ data }">
                                         <div class="text-sm">
-                                            {{ data.response?.combined_text?.substring(0, 150) }}
-                                            <span v-if="data.response?.combined_text?.length > 150">...</span>
+                                            {{ data.comment?.text?.substring(0, 150) }}
+                                            <span v-if="data.comment?.text?.length > 150">...</span>
                                         </div>
                                         <small class="text-500">
-                                            {{ formatDate(data.response?.submitted_at) }}
+                                            {{ formatDate(data.comment?.published_at) }}
                                         </small>
                                     </template>
                                 </Column>
@@ -641,7 +641,7 @@ function getPriorityIcon(priority) {
                                     <i class="pi pi-users text-6xl text-primary mb-3"></i>
                                     <h3 class="text-2xl font-semibold text-900 mb-2">Generar Buyer Personas</h3>
                                     <p class="text-600 mb-4">
-                                        La IA analizará las {{ analyses.length }} respuestas y generará 3-5 perfiles<br>
+                                        La IA analizará los {{ analyses.length }} comentarios y generará 3-5 perfiles<br>
                                         de cliente ideal basados en patrones reales de comportamiento.
                                     </p>
                                 </div>

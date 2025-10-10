@@ -697,6 +697,8 @@ class YoutubeController extends Controller
     public function getAnalysis($videoId, CommentAnalysisService $analysisService)
     {
         try {
+            $video = YoutubeVideo::withCount('comments')->findOrFail($videoId);
+            
             $analyses = YoutubeCommentAnalysis::with('comment')
                 ->where('youtube_video_id', $videoId)
                 ->orderBy('relevance_score', 'desc')
@@ -704,12 +706,14 @@ class YoutubeController extends Controller
 
             $stats = $analysisService->getVideoAnalysisStats($videoId);
 
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'analyses' => $analyses,
-                    'stats' => $stats,
-                ],
+            // Cargar buyer personas existentes
+            $existingPersonas = \App\Models\YoutubeBuyerPersona::where('youtube_video_id', $videoId)->get();
+
+            return inertia('Youtube/Analysis', [
+                'video' => $video,
+                'analyses' => $analyses,
+                'stats' => $stats,
+                'existingPersonas' => $existingPersonas,
             ]);
 
         } catch (\Exception $e) {
@@ -718,10 +722,7 @@ class YoutubeController extends Controller
                 'error' => $e->getMessage()
             ]);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al obtener análisis',
-            ], 500);
+            return back()->with('error', 'Error al obtener análisis');
         }
     }
 
@@ -858,6 +859,45 @@ class YoutubeController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al eliminar el video',
+            ], 500);
+        }
+    }
+
+    /**
+     * Generar buyer personas a partir de análisis de comentarios
+     *
+     * @param int $videoId
+     * @param CommentAnalysisService $analysisService
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function generateBuyerPersonas($videoId, CommentAnalysisService $analysisService)
+    {
+        try {
+            $result = $analysisService->generateBuyerPersonas($videoId);
+
+            if (!$result['success']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $result['message'] ?? 'Error al generar buyer personas',
+                ], 400);
+            }
+
+            return response()->json([
+                'success' => true,
+                'personas' => $result['personas'],
+                'metadata' => $result['metadata'],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error generating buyer personas', [
+                'video_id' => $videoId,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar buyer personas',
+                'error' => $e->getMessage(),
             ], 500);
         }
     }

@@ -41,4 +41,12 @@ class FormSurvey extends Model
     {
         return $this->hasMany(FormResponseAnalysis::class);
     }
+
+    /**
+     * Obtener los buyer personas del formulario
+     */
+    public function buyerPersonas(): HasMany
+    {
+        return $this->hasMany(BuyerPersona::class);
+    }
 }

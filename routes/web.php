@@ -32,6 +32,7 @@ Route::middleware([
         Route::post('/analyze', [YoutubeController::class, 'analyzeComments'])->name('analyze');
         Route::get('/videos/{video}/analysis', [YoutubeController::class, 'getAnalysis'])->name('video.analysis');
         Route::post('/analysis/filter', [YoutubeController::class, 'filterAnalysis'])->name('analysis.filter');
+        Route::post('/videos/{video}/buyer-personas', [YoutubeController::class, 'generateBuyerPersonas'])->name('video.buyerPersonas');
     });
 
     // Google Forms Routes
@@ -45,6 +46,9 @@ Route::middleware([
         // AI Analysis Routes
         Route::post('/analyze', [GoogleFormsController::class, 'analyzeResponses'])->name('analyze');
         Route::get('/surveys/{survey}/analysis', [GoogleFormsController::class, 'getAnalysis'])->name('survey.analysis');
+        
+        // Buyer Personas
+        Route::post('/surveys/{survey}/buyer-personas', [GoogleFormsController::class, 'generateBuyerPersonas'])->name('survey.buyerPersonas');
     });
 });
 

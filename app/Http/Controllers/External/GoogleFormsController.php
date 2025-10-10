@@ -268,7 +268,7 @@ class GoogleFormsController extends Controller
     public function getAnalysis($surveyId, FormAnalysisService $analysisService)
     {
         try {
-            $survey = FormSurvey::with('responses')->findOrFail($surveyId);
+            $survey = FormSurvey::with('responses', 'buyerPersonas')->findOrFail($surveyId);
             
             $analyses = FormResponseAnalysis::with('response')
                 ->where('form_survey_id', $surveyId)
@@ -281,6 +281,7 @@ class GoogleFormsController extends Controller
                 'survey' => $survey,
                 'analyses' => $analyses,
                 'stats' => $stats,
+                'existingPersonas' => $survey->buyerPersonas,
             ]);
 
         } catch (\Exception $e) {
@@ -290,6 +291,41 @@ class GoogleFormsController extends Controller
             ]);
 
             return back()->with('error', 'Error al obtener análisis');
+        }
+    }
+
+    /**
+     * Generar Buyer Personas
+     */
+    public function generateBuyerPersonas($surveyId, FormAnalysisService $analysisService)
+    {
+        try {
+            $result = $analysisService->generateBuyerPersonas($surveyId);
+
+            if (!$result['success']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $result['message'] ?? 'Error al generar buyer personas',
+                ], 400);
+            }
+
+            return response()->json([
+                'success' => true,
+                'personas' => $result['personas'],
+                'metadata' => $result['metadata'],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error generating buyer personas', [
+                'survey_id' => $surveyId,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar buyer personas',
+                'error' => $e->getMessage(),
+            ], 500);
         }
     }
 

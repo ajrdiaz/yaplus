@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Models\BuyerPersona;
 use App\Models\FormResponse;
 use App\Models\FormResponseAnalysis;
 use App\Models\FormSurvey;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -223,6 +225,239 @@ class FormAnalysisService
                       "Extrae keywords relevantes e insights accionables para el buyer persona.";
 
         return $basePrompt;
+    }
+
+    /**
+     * Generar Buyer Personas basado en los análisis
+     */
+    public function generateBuyerPersonas($surveyId, $numPersonas = 4)
+    {
+        try {
+            $survey = FormSurvey::findOrFail($surveyId);
+            
+            // Obtener todos los análisis con sus respuestas
+            $analyses = FormResponseAnalysis::whereHas('response', function ($query) use ($surveyId) {
+                $query->where('form_survey_id', $surveyId);
+            })
+            ->with('response')
+            ->get();
+
+            if ($analyses->isEmpty()) {
+                return [
+                    'success' => false,
+                    'message' => 'No hay análisis disponibles para generar buyer personas',
+                ];
+            }
+
+            // Preparar datos para la IA
+            $analysisData = $analyses->map(function ($analysis) {
+                return [
+                    'category' => $analysis->category,
+                    'sentiment' => $analysis->sentiment,
+                    'relevance_score' => $analysis->relevance_score,
+                    'keywords' => $analysis->keywords,
+                    'insights' => $analysis->insights,
+                    'analysis' => $analysis->ia_analysis,
+                ];
+            })->toArray();
+
+            // Construir el prompt
+            $prompt = $this->buildBuyerPersonaPrompt($survey, $analysisData, $numPersonas);
+
+            // Llamar a OpenAI
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Content-Type' => 'application/json',
+            ])->timeout(120)->post('https://api.openai.com/v1/chat/completions', [
+                'model' => $this->model,
+                'messages' => [
+                    [
+                        'role' => 'system',
+                        'content' => 'Eres un experto en marketing y análisis de buyer personas. Tu trabajo es identificar patrones en los datos y crear perfiles de cliente ideal detallados y accionables.'
+                    ],
+                    [
+                        'role' => 'user',
+                        'content' => $prompt
+                    ]
+                ],
+                'temperature' => 0.7,
+                'max_tokens' => 3000,
+            ]);
+
+            if (!$response->successful()) {
+                Log::error('OpenAI API error generating buyer personas', [
+                    'status' => $response->status(),
+                    'body' => $response->body()
+                ]);
+                return [
+                    'success' => false,
+                    'message' => 'Error al generar buyer personas con OpenAI',
+                ];
+            }
+
+            $result = $response->json();
+            $content = $result['choices'][0]['message']['content'] ?? null;
+
+            if (!$content) {
+                return [
+                    'success' => false,
+                    'message' => 'No se pudo obtener respuesta de OpenAI',
+                ];
+            }
+
+            // Limpiar y parsear JSON
+            $content = trim($content);
+            $content = preg_replace('/^```json\s*/i', '', $content);
+            $content = preg_replace('/\s*```$/', '', $content);
+            
+            $personas = json_decode($content, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                Log::error('Error parsing buyer personas JSON', [
+                    'error' => json_last_error_msg(),
+                    'content' => $content
+                ]);
+                return [
+                    'success' => false,
+                    'message' => 'Error al procesar la respuesta de OpenAI',
+                ];
+            }
+
+            $personasArray = $personas['personas'] ?? $personas;
+
+            // Guardar en base de datos
+            DB::transaction(function () use ($survey, $personasArray, $analyses) {
+                // Eliminar buyer personas anteriores de este survey
+                $survey->buyerPersonas()->delete();
+
+                // Guardar los nuevos buyer personas
+                foreach ($personasArray as $personaData) {
+                    BuyerPersona::create([
+                        'form_survey_id' => $survey->id,
+                        'nombre' => $personaData['nombre'] ?? '',
+                        'edad' => $personaData['edad'] ?? null,
+                        'ocupacion' => $personaData['ocupacion'] ?? null,
+                        'descripcion' => $personaData['descripcion'] ?? null,
+                        'motivaciones' => $personaData['motivaciones'] ?? [],
+                        'pain_points' => $personaData['pain_points'] ?? [],
+                        'suenos' => $personaData['suenos'] ?? [],
+                        'objeciones' => $personaData['objeciones'] ?? [],
+                        'comportamiento' => $personaData['comportamiento'] ?? null,
+                        'canales_preferidos' => $personaData['canales_preferidos'] ?? [],
+                        'keywords_clave' => $personaData['keywords_clave'] ?? [],
+                        'porcentaje_audiencia' => $personaData['porcentaje_audiencia'] ?? 0,
+                        'nivel_prioridad' => $personaData['nivel_prioridad'] ?? 'media',
+                        'estrategia_recomendada' => $personaData['estrategia_recomendada'] ?? null,
+                        'total_responses_analyzed' => $analyses->count(),
+                    ]);
+                }
+            });
+
+            return [
+                'success' => true,
+                'personas' => $personasArray,
+                'metadata' => [
+                    'total_responses' => $analyses->count(),
+                    'generated_at' => now()->toIso8601String(),
+                    'saved_to_database' => true,
+                ]
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Error generating buyer personas', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return [
+                'success' => false,
+                'message' => 'Error al generar buyer personas: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Construir prompt para generar buyer personas
+     */
+    private function buildBuyerPersonaPrompt($survey, $analysisData, $numPersonas)
+    {
+        $contextInfo = "CONTEXTO DEL NEGOCIO:\n";
+        if ($survey->product_name) {
+            $contextInfo .= "Producto: {$survey->product_name}\n";
+        }
+        if ($survey->product_description) {
+            $contextInfo .= "Descripción: {$survey->product_description}\n";
+        }
+        if ($survey->target_audience) {
+            $contextInfo .= "Audiencia objetivo: {$survey->target_audience}\n";
+        }
+        if ($survey->research_goal) {
+            $contextInfo .= "Objetivo de investigación: {$survey->research_goal}\n";
+        }
+        if ($survey->additional_context) {
+            $contextInfo .= "Contexto adicional: {$survey->additional_context}\n";
+        }
+        $contextInfo .= "\n";
+
+        // Estadísticas generales
+        $categoryCounts = [];
+        $sentimentCounts = [];
+        $allKeywords = [];
+        
+        foreach ($analysisData as $item) {
+            $cat = $item['category'] ?? 'otro';
+            $categoryCounts[$cat] = ($categoryCounts[$cat] ?? 0) + 1;
+            
+            $sent = $item['sentiment'] ?? 'neutral';
+            $sentimentCounts[$sent] = ($sentimentCounts[$sent] ?? 0) + 1;
+            
+            if (!empty($item['keywords'])) {
+                $allKeywords = array_merge($allKeywords, $item['keywords']);
+            }
+        }
+
+        $statsInfo = "ESTADÍSTICAS GENERALES:\n";
+        $statsInfo .= "Total de respuestas analizadas: " . count($analysisData) . "\n";
+        $statsInfo .= "Categorías: " . json_encode($categoryCounts) . "\n";
+        $statsInfo .= "Sentimientos: " . json_encode($sentimentCounts) . "\n";
+        $statsInfo .= "\n";
+
+        // Datos de análisis (resumidos)
+        $analysisInfo = "DATOS DE ANÁLISIS:\n";
+        $analysisInfo .= json_encode($analysisData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $analysisInfo .= "\n\n";
+
+        return $contextInfo . $statsInfo . $analysisInfo .
+               "TAREA:\n" .
+               "Analiza todos los datos anteriores y genera EXACTAMENTE {$numPersonas} buyer personas diferentes.\n" .
+               "Cada buyer persona debe representar un segmento significativo de la audiencia.\n\n" .
+               "Responde ÚNICAMENTE en formato JSON válido con esta estructura:\n" .
+               "{\n" .
+               '  "personas": [' . "\n" .
+               '    {' . "\n" .
+               '      "nombre": "Nombre representativo",' . "\n" .
+               '      "edad": "Rango de edad (ej: 25-35)",' . "\n" .
+               '      "ocupacion": "Ocupación principal",' . "\n" .
+               '      "descripcion": "Descripción breve del perfil",' . "\n" .
+               '      "motivaciones": ["motivación 1", "motivación 2", "motivación 3"],' . "\n" .
+               '      "pain_points": ["dolor 1", "dolor 2", "dolor 3"],' . "\n" .
+               '      "suenos": ["sueño 1", "sueño 2"],' . "\n" .
+               '      "objeciones": ["objeción 1", "objeción 2"],' . "\n" .
+               '      "comportamiento": "Descripción de su comportamiento de compra",' . "\n" .
+               '      "canales_preferidos": ["canal 1", "canal 2"],' . "\n" .
+               '      "keywords_clave": ["palabra 1", "palabra 2", "palabra 3"],' . "\n" .
+               '      "porcentaje_audiencia": 25,' . "\n" .
+               '      "nivel_prioridad": "alta|media|baja",' . "\n" .
+               '      "estrategia_recomendada": "Cómo abordar a este segmento"' . "\n" .
+               '    }' . "\n" .
+               '  ]' . "\n" .
+               "}\n\n" .
+               "IMPORTANTE:\n" .
+               "- Crea perfiles DISTINTOS y bien diferenciados\n" .
+               "- Basa cada perfil en patrones reales de los datos\n" .
+               "- Los porcentajes de audiencia deben sumar aproximadamente 100\n" .
+               "- Ordena por nivel de prioridad (alta primero)\n" .
+               "- Sé específico y accionable en las estrategias";
     }
 
     /**

@@ -4,8 +4,11 @@ namespace App\Services;
 
 use App\Models\YoutubeComment;
 use App\Models\YoutubeCommentAnalysis;
+use App\Models\YoutubeVideo;
+use App\Models\YoutubeBuyerPersona;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class CommentAnalysisService
 {
@@ -277,5 +280,311 @@ class CommentAnalysisService
         arsort($keywordCounts);
 
         return array_slice($keywordCounts, 0, $limit, true);
+    }
+
+    /**
+     * Generar buyer personas basados en análisis de comentarios de YouTube
+     *
+     * @param int $videoId
+     * @param int $numPersonas
+     * @return array
+     */
+    public function generateBuyerPersonas($videoId, $numPersonas = 4)
+    {
+        try {
+            $video = YoutubeVideo::findOrFail($videoId);
+            
+            // Obtener todos los análisis con sus comentarios
+            $allAnalyses = YoutubeCommentAnalysis::where('youtube_video_id', $videoId)
+                ->with('comment')
+                ->get();
+
+            if ($allAnalyses->isEmpty()) {
+                return [
+                    'success' => false,
+                    'message' => 'No hay análisis disponibles para generar buyer personas',
+                ];
+            }
+
+            // Seleccionar muestra representativa para evitar exceder límite de tokens
+            // Priorizar: relevantes + variedad de categorías + diferentes sentimientos
+            $analyses = collect();
+            
+            // 1. Tomar los 20 más relevantes
+            $topRelevant = $allAnalyses->where('is_relevant', true)
+                ->sortByDesc('relevance_score')
+                ->take(20);
+            $analyses = $analyses->merge($topRelevant);
+            
+            // 2. Tomar muestra de cada categoría (5 por categoría)
+            $categories = $allAnalyses->pluck('category')->unique();
+            foreach ($categories as $category) {
+                $categoryAnalyses = $allAnalyses->where('category', $category)
+                    ->sortByDesc('relevance_score')
+                    ->take(5);
+                $analyses = $analyses->merge($categoryAnalyses);
+            }
+            
+            // 3. Asegurar diversidad de sentimientos (5 por sentimiento)
+            $sentiments = ['positivo', 'neutral', 'negativo'];
+            foreach ($sentiments as $sentiment) {
+                $sentimentAnalyses = $allAnalyses->where('sentiment', $sentiment)
+                    ->sortByDesc('relevance_score')
+                    ->take(5);
+                $analyses = $analyses->merge($sentimentAnalyses);
+            }
+            
+            // Eliminar duplicados y limitar a máximo 80 análisis
+            $analyses = $analyses->unique('id')->take(80);
+
+            // Preparar datos para la IA (solo lo esencial)
+            $analysisData = $analyses->map(function ($analysis) {
+                return [
+                    'category' => $analysis->category,
+                    'sentiment' => $analysis->sentiment,
+                    'relevance_score' => $analysis->relevance_score,
+                    'keywords' => is_array($analysis->keywords) ? array_slice($analysis->keywords, 0, 5) : [],
+                    'insights' => $analysis->insights,
+                    // Limitar análisis a 200 caracteres
+                    'analysis' => substr($analysis->ia_analysis, 0, 200),
+                ];
+            })->toArray();
+
+            // Construir el prompt
+            $prompt = $this->buildBuyerPersonaPrompt($video, $analysisData, $numPersonas);
+
+            // Llamar a OpenAI
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Content-Type' => 'application/json',
+            ])->timeout(120)->post('https://api.openai.com/v1/chat/completions', [
+                'model' => $this->model,
+                'messages' => [
+                    [
+                        'role' => 'system',
+                        'content' => 'Eres un experto en marketing y análisis de buyer personas. Tu trabajo es identificar patrones en los datos y crear perfiles de cliente ideal detallados y accionables.'
+                    ],
+                    [
+                        'role' => 'user',
+                        'content' => $prompt
+                    ]
+                ],
+                'temperature' => 0.7,
+                'max_tokens' => 3000,
+            ]);
+
+            if (!$response->successful()) {
+                Log::error('OpenAI API error generating buyer personas', [
+                    'status' => $response->status(),
+                    'body' => $response->body()
+                ]);
+                return [
+                    'success' => false,
+                    'message' => 'Error al generar buyer personas con OpenAI',
+                ];
+            }
+
+            $result = $response->json();
+            $content = $result['choices'][0]['message']['content'] ?? null;
+
+            if (!$content) {
+                return [
+                    'success' => false,
+                    'message' => 'No se pudo obtener respuesta de OpenAI',
+                ];
+            }
+
+            // Limpiar y parsear JSON
+            $content = trim($content);
+            $content = preg_replace('/^```json\s*/i', '', $content);
+            $content = preg_replace('/\s*```$/', '', $content);
+            
+            $personas = json_decode($content, true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                Log::error('Error parsing buyer personas JSON', [
+                    'error' => json_last_error_msg(),
+                    'content' => $content
+                ]);
+                return [
+                    'success' => false,
+                    'message' => 'Error al procesar la respuesta de OpenAI',
+                ];
+            }
+
+            $personasArray = $personas['personas'] ?? $personas;
+
+            // Guardar en base de datos
+            DB::transaction(function () use ($video, $personasArray, $allAnalyses) {
+                // Eliminar buyer personas anteriores de este video
+                YoutubeBuyerPersona::where('youtube_video_id', $video->id)->delete();
+
+                // Guardar los nuevos buyer personas
+                foreach ($personasArray as $personaData) {
+                    YoutubeBuyerPersona::create([
+                        'youtube_video_id' => $video->id,
+                        'nombre' => $personaData['nombre'] ?? '',
+                        'edad' => $personaData['edad'] ?? null,
+                        'ocupacion' => $personaData['ocupacion'] ?? null,
+                        'descripcion' => $personaData['descripcion'] ?? null,
+                        'motivaciones' => $personaData['motivaciones'] ?? [],
+                        'pain_points' => $personaData['pain_points'] ?? [],
+                        'suenos' => $personaData['suenos'] ?? [],
+                        'objeciones' => $personaData['objeciones'] ?? [],
+                        'comportamiento' => $personaData['comportamiento'] ?? null,
+                        'canales_preferidos' => $personaData['canales_preferidos'] ?? [],
+                        'keywords_clave' => $personaData['keywords_clave'] ?? [],
+                        'porcentaje_audiencia' => $personaData['porcentaje_audiencia'] ?? 0,
+                        'nivel_prioridad' => $personaData['nivel_prioridad'] ?? 'media',
+                        'estrategia_recomendada' => $personaData['estrategia_recomendada'] ?? null,
+                        'total_comments_analyzed' => $allAnalyses->count(),
+                    ]);
+                }
+            });
+
+            // Recargar buyer personas creados
+            $createdPersonas = YoutubeBuyerPersona::where('youtube_video_id', $video->id)->get();
+
+            return [
+                'success' => true,
+                'personas' => $createdPersonas,
+                'metadata' => [
+                    'total_comments_analyzed' => $analyses->count(),
+                    'num_personas' => count($personasArray),
+                ],
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Error generating buyer personas', [
+                'video_id' => $videoId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Error al generar buyer personas: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Construir el prompt para generar buyer personas
+     *
+     * @param YoutubeVideo $video
+     * @param array $analysisData
+     * @param int $numPersonas
+     * @return string
+     */
+    private function buildBuyerPersonaPrompt(YoutubeVideo $video, array $analysisData, int $numPersonas): string
+    {
+        $contextInfo = "Video: {$video->title}\n";
+        $contextInfo .= "Canal: {$video->channel_title}\n";
+        $contextInfo .= "Total comentarios analizados: " . count($analysisData) . "\n";
+        
+        if ($video->business_context) {
+            $contextInfo .= "Contexto: {$video->business_context}\n";
+        }
+
+        // Crear resumen estadístico en lugar de enviar todo el JSON
+        $summary = $this->createAnalysisSummary($analysisData);
+
+        return <<<PROMPT
+{$contextInfo}
+
+RESUMEN DE ANÁLISIS DE COMENTARIOS:
+{$summary}
+
+TAREA: Crea {$numPersonas} buyer personas distintos basándote en estos patrones.
+
+INSTRUCCIONES:
+1. Analiza los patrones en los comentarios: motivaciones, pain points, sueños, objeciones
+2. Identifica segmentos claros de audiencia basados en comportamientos y necesidades similares
+3. Crea {$numPersonas} buyer personas únicos y diferenciados
+4. Para cada buyer persona, estima el porcentaje de la audiencia que representa (deben sumar 100%)
+5. Asigna un nivel de prioridad (alta, media, baja) basado en relevancia y potencial
+
+FORMATO DE RESPUESTA (JSON):
+Devuelve un array JSON con la siguiente estructura EXACTA:
+
+{
+  "personas": [
+    {
+      "nombre": "Nombre del Persona (ej: María Emprendedora)",
+      "edad": "Rango de edad (ej: 25-35 años)",
+      "ocupacion": "Ocupación/Rol (ej: Emprendedora digital)",
+      "descripcion": "Descripción breve de quién es este persona",
+      "motivaciones": ["motivación 1", "motivación 2", "motivación 3"],
+      "pain_points": ["dolor 1", "dolor 2", "dolor 3"],
+      "suenos": ["sueño 1", "sueño 2", "sueño 3"],
+      "objeciones": ["objeción 1", "objeción 2"],
+      "comportamiento": "Descripción de su comportamiento de compra/decisión",
+      "canales_preferidos": ["canal 1", "canal 2", "canal 3"],
+      "keywords_clave": ["keyword 1", "keyword 2", "keyword 3"],
+      "porcentaje_audiencia": 40,
+      "nivel_prioridad": "alta",
+      "estrategia_recomendada": "Estrategia específica para este segmento"
+    }
+  ]
+}
+
+RESPONDE ÚNICAMENTE CON EL JSON, SIN TEXTO ADICIONAL.
+PROMPT;
+    }
+
+    /**
+     * Crear un resumen compacto de los análisis para el prompt
+     *
+     * @param array $analysisData
+     * @return string
+     */
+    private function createAnalysisSummary(array $analysisData): string
+    {
+        $categories = [];
+        $sentiments = [];
+        $allKeywords = [];
+        $allInsights = [];
+
+        foreach ($analysisData as $analysis) {
+            // Contar categorías
+            $cat = $analysis['category'] ?? 'desconocida';
+            $categories[$cat] = ($categories[$cat] ?? 0) + 1;
+
+            // Contar sentimientos
+            $sent = $analysis['sentiment'] ?? 'neutral';
+            $sentiments[$sent] = ($sentiments[$sent] ?? 0) + 1;
+
+            // Acumular keywords
+            if (isset($analysis['keywords']) && is_array($analysis['keywords'])) {
+                $allKeywords = array_merge($allKeywords, $analysis['keywords']);
+            }
+
+            // Acumular insights relevantes
+            if (isset($analysis['insights']) && is_array($analysis['insights'])) {
+                foreach ($analysis['insights'] as $key => $value) {
+                    if ($value && strlen($value) > 20) {
+                        $allInsights[] = substr($value, 0, 100);
+                    }
+                }
+            }
+        }
+
+        // Top keywords
+        $keywordCounts = array_count_values($allKeywords);
+        arsort($keywordCounts);
+        $topKeywords = array_slice(array_keys($keywordCounts), 0, 15);
+
+        $summary = "DISTRIBUCIÓN:\n";
+        $summary .= "- Categorías: " . json_encode($categories) . "\n";
+        $summary .= "- Sentimientos: " . json_encode($sentiments) . "\n";
+        $summary .= "- Top Keywords: " . implode(", ", $topKeywords) . "\n\n";
+        
+        $summary .= "INSIGHTS PRINCIPALES (muestra):\n";
+        $sampleInsights = array_slice($allInsights, 0, 10);
+        foreach ($sampleInsights as $i => $insight) {
+            $summary .= ($i + 1) . ". " . $insight . "\n";
+        }
+
+        return $summary;
     }
 }
