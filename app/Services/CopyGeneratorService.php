@@ -10,10 +10,10 @@ class CopyGeneratorService
     /**
      * Genera copy basado en un buyer persona
      */
-    public function generateCopy($buyerPersona, string $copyType, ?string $customName = null): CopyGeneration
+    public function generateCopy($buyerPersona, string $copyType, ?string $customName = null, ?int $productId = null): CopyGeneration
     {
         $buyerData = $this->prepareBuyerPersonaData($buyerPersona);
-        $prompt = $this->buildPrompt($buyerData, $copyType);
+        $prompt = $this->buildPrompt($buyerData, $copyType, $productId);
 
         $response = OpenAI::chat()->create([
             'model' => 'gpt-4o-mini',
@@ -37,6 +37,7 @@ class CopyGeneratorService
         $copy = CopyGeneration::create([
             'buyer_persona_id' => $buyerPersona->id,
             'buyer_persona_type' => get_class($buyerPersona),
+            'product_id' => $productId,
             'copy_type' => $copyType,
             'name' => $customName ?? $this->generateDefaultName($buyerPersona, $copyType),
             'headline' => $parsedContent['headline'] ?? null,
@@ -100,9 +101,9 @@ class CopyGeneratorService
     /**
      * Construye el prompt según el tipo de copy
      */
-    private function buildPrompt(array $buyerData, string $copyType): string
+    private function buildPrompt(array $buyerData, string $copyType, ?int $productId = null): string
     {
-        $baseContext = $this->buildBaseContext($buyerData);
+        $baseContext = $this->buildBaseContext($buyerData, $productId);
 
         $prompts = [
             'facebook_ad' => "
@@ -264,7 +265,7 @@ TWEET8: [texto]
     /**
      * Construye el contexto base del buyer persona
      */
-    private function buildBaseContext(array $buyerData): string
+    private function buildBaseContext(array $buyerData, ?int $productId = null): string
     {
         $motivaciones = ! empty($buyerData['motivaciones']) ? implode(', ', array_slice($buyerData['motivaciones'], 0, 5)) : 'No especificadas';
         $painPoints = ! empty($buyerData['pain_points']) ? implode(', ', array_slice($buyerData['pain_points'], 0, 5)) : 'No especificados';
@@ -272,7 +273,7 @@ TWEET8: [texto]
         $objeciones = ! empty($buyerData['objeciones']) ? implode(', ', array_slice($buyerData['objeciones'], 0, 3)) : 'No especificadas';
         $keywords = ! empty($buyerData['keywords']) ? implode(', ', array_slice($buyerData['keywords'], 0, 10)) : 'No especificadas';
 
-        return "
+        $context = "
 BUYER PERSONA:
 - Nombre: {$buyerData['nombre']}
 - Edad: {$buyerData['edad']}
@@ -296,6 +297,32 @@ OBJECIONES COMUNES:
 KEYWORDS QUE USAN:
 {$keywords}
 ";
+
+        // Agregar información del producto si está disponible
+        if ($productId) {
+            $product = \App\Models\Product::find($productId);
+            if ($product) {
+                $context .= "\n\nINFORMACIÓN DEL PRODUCTO:";
+                $context .= "\n- Nombre: {$product->nombre}";
+                if ($product->descripcion) {
+                    $context .= "\n- Descripción: {$product->descripcion}";
+                }
+                if ($product->audiencia_objetivo) {
+                    $context .= "\n- Audiencia Objetivo: {$product->audiencia_objetivo}";
+                }
+                if ($product->puntos_dolor) {
+                    $context .= "\n- Puntos de Dolor que Resuelve: {$product->puntos_dolor}";
+                }
+                if ($product->beneficios_clave) {
+                    $context .= "\n- Beneficios Clave: {$product->beneficios_clave}";
+                }
+                if ($product->propuesta_valor) {
+                    $context .= "\n- Propuesta de Valor: {$product->propuesta_valor}";
+                }
+            }
+        }
+
+        return $context;
     }
 
     /**

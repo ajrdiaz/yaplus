@@ -19,11 +19,12 @@ import Dialog from 'primevue/dialog';
 import Dropdown from 'primevue/dropdown';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
+import { computed } from 'vue';
 
 const props = defineProps({
-    videos: {
-        type: Object,
-        default: () => ({ data: [], total: 0 })
+    videosByProduct: {
+        type: Array,
+        default: () => []
     },
     products: {
         type: Array,
@@ -38,6 +39,7 @@ const selectedVideo = ref(null);
 const videoComments = ref([]);
 const activeTab = ref(0);
 const expandedRows = ref([]);
+const expandedProductRows = ref([]);
 
 // Variables para análisis IA
 const loadingAnalysis = ref(false);
@@ -92,7 +94,7 @@ const importComments = () => {
             });
             
             form.reset();
-            router.reload({ only: ['videos'] });
+            router.reload({ only: ['videosByProduct'] });
         }
     })
     .catch(error => {
@@ -300,9 +302,9 @@ const deleteVideo = (video) => {
                     detail: response.data.message,
                     life: 5000
                 });
-                
+
                 // Recargar la lista de videos
-                router.reload({ only: ['videos'] });
+                router.reload({ only: ['videosByProduct'] });
                 
                 // Limpiar selección si es el video actual
                 if (selectedVideo.value?.id === video.id) {
@@ -431,120 +433,172 @@ const deleteVideo = (video) => {
             <Card>
                 <template #content>
                     <TabView v-model:activeIndex="activeTab">
-                        <!-- Tab 1: Videos -->
+                        <!-- Tab 1: Videos Agrupados por Producto -->
                         <TabPanel>
                             <template #header>
                                 <div class="flex align-items-center gap-2">
                                     <i class="pi pi-video"></i>
-                                    <span>Videos</span>
-                                    <Badge :value="videos.total || 0" severity="info" />
+                                    <span>Videos por Producto</span>
+                                    <Badge :value="videosByProduct.length" severity="info" />
                                 </div>
                             </template>
 
                             <DataTable
-                                :value="videos.data || []"
-                                dataKey="id"
+                                :value="videosByProduct"
+                                v-model:expandedRows="expandedProductRows"
+                                dataKey="product.id"
                                 :rowHover="true"
                                 responsiveLayout="scroll"
                                 :paginator="true"
                                 :rows="10"
                                 class="p-datatable-sm"
                             >
-                                <Column header="Video" style="min-width: 400px">
+                                <Column :expander="true" style="width: 3rem" />
+
+                                <Column header="Producto" style="min-width: 300px">
                                     <template #body="{ data }">
-                                        <div class="flex gap-3">
-                                            <Image
-                                                :src="data.thumbnail_default"
-                                                :alt="data.title"
-                                                width="120"
-                                                preview
-                                            />
-                                            <div class="flex-1">
-                                                <div class="font-semibold text-900 mb-1">{{ data.title }}</div>
-                                                <div class="text-sm text-600 mb-2">{{ data.channel_title }}</div>
-                                                <a
-                                                    :href="data.url"
-                                                    target="_blank"
-                                                    class="text-primary text-sm"
-                                                >
-                                                    <i class="pi pi-external-link text-xs"></i>
-                                                    Ver en YouTube
-                                                </a>
+                                        <div class="flex align-items-center gap-3">
+                                            <i class="pi pi-box text-primary text-2xl"></i>
+                                            <div>
+                                                <div class="font-semibold text-lg text-900">{{ data.product?.nombre || 'Sin producto asignado' }}</div>
+                                                <div class="text-sm text-600">{{ data.product?.audiencia_objetivo || '' }}</div>
                                             </div>
                                         </div>
                                     </template>
                                 </Column>
 
-                                <Column header="Estadísticas" style="min-width: 200px">
+                                <Column header="Videos" style="min-width: 120px">
                                     <template #body="{ data }">
-                                        <div class="flex flex-column gap-2">
-                                            <div class="flex align-items-center gap-2">
-                                                <i class="pi pi-eye text-blue-500"></i>
-                                                <span class="font-semibold">{{ formatNumber(data.view_count) }}</span>
-                                                <span class="text-500 text-sm">vistas</span>
-                                            </div>
-                                            <div class="flex align-items-center gap-2">
-                                                <i class="pi pi-thumbs-up text-green-500"></i>
-                                                <span class="font-semibold">{{ formatNumber(data.like_count) }}</span>
-                                                <span class="text-500 text-sm">likes</span>
-                                            </div>
-                                            <div class="flex align-items-center gap-2">
-                                                <i class="pi pi-comments text-orange-500"></i>
-                                                <span class="font-semibold">{{ data.comment_count }}</span>
-                                                <span class="text-500 text-sm">comentarios</span>
-                                            </div>
-                                        </div>
+                                        <Badge :value="data.total_videos" severity="info" />
                                     </template>
                                 </Column>
 
-                                <Column header="Importados" style="min-width: 150px">
+                                <Column header="Comentarios" style="min-width: 120px">
                                     <template #body="{ data }">
-                                        <Tag :value="`${data.comments_count} comentarios`" severity="success" rounded />
+                                        <Badge :value="data.total_comments" severity="success" />
                                     </template>
                                 </Column>
 
-                                <Column header="Fecha" style="min-width: 150px">
+                                <Column header="Análisis" style="min-width: 120px">
                                     <template #body="{ data }">
-                                        <small class="text-500">{{ formatDate(data.created_at) }}</small>
+                                        <Badge v-if="data.total_analyses > 0" :value="data.total_analyses" severity="warning" />
+                                        <span v-else class="text-400">-</span>
                                     </template>
                                 </Column>
 
-                                <Column header="Acciones" style="min-width: 230px">
-                                    <template #body="{ data }">
-                                        <div class="flex gap-2">
-                                            <Button
-                                                icon="pi pi-eye"
-                                                size="small"
-                                                @click="loadVideoComments(data)"
-                                                v-tooltip.top="'Ver comentarios'"
-                                            />
-                                            <Button
-                                                v-if="!data.analyses_count || data.analyses_count === 0"
-                                                icon="pi pi-bolt"
-                                                size="small"
-                                                severity="success"
-                                                @click="analyzeVideoWithAI(data)"
-                                                v-tooltip.top="'Analizar con IA'"
-                                            />
-                                            <Button
-                                                icon="pi pi-chart-bar"
-                                                size="small"
-                                                severity="help"
-                                                @click="loadAnalysis(data)"
-                                                v-tooltip.top="'Ver análisis IA'"
-                                                :badge="data.analyses_count > 0 ? data.analyses_count.toString() : null"
-                                                badgeSeverity="success"
-                                            />
-                                            <Button
-                                                icon="pi pi-trash"
-                                                size="small"
-                                                severity="danger"
-                                                @click="deleteVideo(data)"
-                                                v-tooltip.top="'Eliminar video y todos sus datos'"
-                                            />
-                                        </div>
-                                    </template>
-                                </Column>
+                                <!-- Row Expansion: Lista de videos del producto -->
+                                <template #expansion="{ data }">
+                                    <div class="p-3">
+                                        <h4 class="text-lg font-semibold mb-3 text-900">
+                                            <i class="pi pi-video mr-2 text-primary"></i>
+                                            Videos de {{ data.product?.nombre || 'este producto' }}
+                                        </h4>
+
+                                        <DataTable
+                                            :value="data.videos"
+                                            dataKey="id"
+                                            :rowHover="true"
+                                            responsiveLayout="scroll"
+                                            class="p-datatable-sm"
+                                        >
+                                            <Column header="Video" style="min-width: 400px">
+                                                <template #body="{ data: video }">
+                                                    <div class="flex gap-3">
+                                                        <Image
+                                                            :src="video.thumbnail_default"
+                                                            :alt="video.title"
+                                                            width="120"
+                                                            preview
+                                                        />
+                                                        <div class="flex-1">
+                                                            <div class="font-semibold text-900 mb-1">{{ video.title }}</div>
+                                                            <div class="text-sm text-600 mb-2">{{ video.channel_title }}</div>
+                                                            <a
+                                                                :href="video.url"
+                                                                target="_blank"
+                                                                class="text-primary text-sm"
+                                                            >
+                                                                <i class="pi pi-external-link text-xs"></i>
+                                                                Ver en YouTube
+                                                            </a>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                            </Column>
+
+                                            <Column header="Estadísticas" style="min-width: 200px">
+                                                <template #body="{ data: video }">
+                                                    <div class="flex flex-column gap-2">
+                                                        <div class="flex align-items-center gap-2">
+                                                            <i class="pi pi-eye text-blue-500"></i>
+                                                            <span class="font-semibold">{{ formatNumber(video.view_count) }}</span>
+                                                            <span class="text-500 text-sm">vistas</span>
+                                                        </div>
+                                                        <div class="flex align-items-center gap-2">
+                                                            <i class="pi pi-thumbs-up text-green-500"></i>
+                                                            <span class="font-semibold">{{ formatNumber(video.like_count) }}</span>
+                                                            <span class="text-500 text-sm">likes</span>
+                                                        </div>
+                                                        <div class="flex align-items-center gap-2">
+                                                            <i class="pi pi-comments text-orange-500"></i>
+                                                            <span class="font-semibold">{{ video.comment_count }}</span>
+                                                            <span class="text-500 text-sm">comentarios</span>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                            </Column>
+
+                                            <Column header="Importados" style="min-width: 150px">
+                                                <template #body="{ data: video }">
+                                                    <Tag :value="`${video.comments_count} comentarios`" severity="success" rounded />
+                                                </template>
+                                            </Column>
+
+                                            <Column header="Fecha" style="min-width: 150px">
+                                                <template #body="{ data: video }">
+                                                    <small class="text-500">{{ formatDate(video.created_at) }}</small>
+                                                </template>
+                                            </Column>
+
+                                            <Column header="Acciones" style="min-width: 230px">
+                                                <template #body="{ data: video }">
+                                                    <div class="flex gap-2">
+                                                        <Button
+                                                            icon="pi pi-eye"
+                                                            size="small"
+                                                            @click="loadVideoComments(video)"
+                                                            v-tooltip.top="'Ver comentarios'"
+                                                        />
+                                                        <Button
+                                                            v-if="!video.analyses_count || video.analyses_count === 0"
+                                                            icon="pi pi-bolt"
+                                                            size="small"
+                                                            severity="success"
+                                                            @click="analyzeVideoWithAI(video)"
+                                                            v-tooltip.top="'Analizar con IA'"
+                                                        />
+                                                        <Button
+                                                            icon="pi pi-chart-bar"
+                                                            size="small"
+                                                            severity="help"
+                                                            @click="loadAnalysis(video)"
+                                                            v-tooltip.top="'Ver análisis IA'"
+                                                            :badge="video.analyses_count > 0 ? video.analyses_count.toString() : null"
+                                                            badgeSeverity="success"
+                                                        />
+                                                        <Button
+                                                            icon="pi pi-trash"
+                                                            size="small"
+                                                            severity="danger"
+                                                            @click="deleteVideo(video)"
+                                                            v-tooltip.top="'Eliminar video y todos sus datos'"
+                                                        />
+                                                    </div>
+                                                </template>
+                                            </Column>
+                                        </DataTable>
+                                    </div>
+                                </template>
 
                                 <template #empty>
                                     <div class="text-center py-5">

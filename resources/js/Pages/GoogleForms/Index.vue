@@ -16,9 +16,9 @@ import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
 
 const props = defineProps({
-    surveys: {
-        type: Object,
-        default: () => ({ data: [], total: 0 })
+    surveysByProduct: {
+        type: Array,
+        default: () => []
     },
     products: {
         type: Array,
@@ -28,6 +28,7 @@ const props = defineProps({
 
 const toast = useToast();
 const loading = ref(false);
+const expandedProductRows = ref([]);
 
 const form = useForm({
     sheet_url: '',
@@ -65,7 +66,7 @@ const importResponses = () => {
             });
             
             form.reset();
-            router.reload({ only: ['surveys'] });
+            router.reload({ only: ['surveysByProduct'] });
         }
     })
     .catch(error => {
@@ -108,7 +109,7 @@ const analyzeWithIA = (survey) => {
                 detail: response.data.message,
                 life: 5000
             });
-            router.reload({ only: ['surveys'] });
+            router.reload({ only: ['surveysByProduct'] });
         }
     })
     .catch(error => {
@@ -144,7 +145,7 @@ const deleteSurvey = (survey) => {
                     detail: response.data.message,
                     life: 3000
                 });
-                router.reload({ only: ['surveys'] });
+                router.reload({ only: ['surveysByProduct'] });
             }
         })
         .catch(error => {
@@ -267,104 +268,156 @@ const formatDate = (dateString) => {
             </Card>
         </div>
 
-        <!-- Tabla de formularios -->
+        <!-- Tabla de formularios agrupados por producto -->
         <div class="col-12">
             <Card>
                 <template #title>
                     <div class="flex justify-content-between align-items-center">
-                        <span>Formularios Importados</span>
-                        <Badge :value="surveys.total || 0" severity="info" />
+                        <span>Formularios por Producto</span>
+                        <Badge :value="surveysByProduct.length" severity="info" />
                     </div>
                 </template>
                 <template #content>
                     <DataTable
-                        :value="surveys.data || []"
-                        dataKey="id"
+                        :value="surveysByProduct"
+                        v-model:expandedRows="expandedProductRows"
+                        dataKey="product.id"
                         :rowHover="true"
                         responsiveLayout="scroll"
                         :paginator="true"
                         :rows="10"
                         class="p-datatable-sm"
                     >
-                        <Column header="Formulario" style="min-width: 300px">
+                        <Column :expander="true" style="width: 3rem" />
+
+                        <Column header="Producto" style="min-width: 300px">
                             <template #body="{ data }">
-                                <div>
-                                    <div class="font-semibold text-900 mb-1">{{ data.title }}</div>
-                                    <div class="text-sm text-600" v-if="data.description">{{ data.description }}</div>
-                                    <a
-                                        v-if="data.form_url"
-                                        :href="data.form_url"
-                                        target="_blank"
-                                        class="text-primary text-sm"
-                                    >
-                                        <i class="pi pi-external-link text-xs"></i>
-                                        Ver Hoja de Cálculo
-                                    </a>
+                                <div class="flex align-items-center gap-3">
+                                    <i class="pi pi-box text-primary text-2xl"></i>
+                                    <div>
+                                        <div class="font-semibold text-lg text-900">{{ data.product?.nombre || 'Sin producto asignado' }}</div>
+                                        <div class="text-sm text-600">{{ data.product?.audiencia_objetivo || '' }}</div>
+                                    </div>
                                 </div>
                             </template>
                         </Column>
 
-                        <Column header="Respuestas" style="min-width: 150px">
+                        <Column header="Formularios" style="min-width: 120px">
                             <template #body="{ data }">
-                                <Tag :value="`${data.responses_count} respuestas`" severity="success" rounded />
+                                <Badge :value="data.total_surveys" severity="info" />
                             </template>
                         </Column>
 
-                        <Column header="Fecha" style="min-width: 150px">
+                        <Column header="Respuestas" style="min-width: 120px">
                             <template #body="{ data }">
-                                <small class="text-500">{{ formatDate(data.created_at) }}</small>
+                                <Badge :value="data.total_responses" severity="success" />
                             </template>
                         </Column>
 
-                        <Column header="Análisis IA" style="min-width: 150px">
+                        <Column header="Análisis" style="min-width: 120px">
                             <template #body="{ data }">
-                                <div v-if="data.analyses_count > 0">
-                                    <Tag :value="`${data.analyses_count} analizadas`" severity="success" rounded />
-                                </div>
-                                <div v-else>
-                                    <Tag value="Sin analizar" severity="warning" rounded />
-                                </div>
+                                <Badge v-if="data.total_analyses > 0" :value="data.total_analyses" severity="warning" />
+                                <span v-else class="text-400">-</span>
                             </template>
                         </Column>
 
-                        <Column header="Acciones" style="min-width: 300px">
-                            <template #body="{ data }">
-                                <div class="flex gap-2 flex-wrap">
-                                    <!-- Analizar con IA -->
-                                    <Button
-                                        v-if="data.analyses_count === 0"
-                                        icon="pi pi-sparkles"
-                                        label="Analizar con IA"
-                                        size="small"
-                                        severity="info"
-                                        @click="analyzeWithIA(data)"
-                                        :loading="analyzing && analyzingSurveyId === data.id"
-                                        :disabled="analyzing || data.responses_count === 0"
-                                        v-tooltip.top="data.responses_count === 0 ? 'No hay respuestas para analizar' : 'Analizar respuestas con IA'"
-                                    />
-                                    
-                                    <!-- Ver análisis -->
-                                    <Button
-                                        v-if="data.analyses_count > 0"
-                                        icon="pi pi-chart-bar"
-                                        label="Ver Análisis"
-                                        size="small"
-                                        severity="success"
-                                        @click="viewAnalysis(data)"
-                                        v-tooltip.top="'Ver resultados del análisis'"
-                                    />
-                                    
-                                    <!-- Eliminar -->
-                                    <Button
-                                        icon="pi pi-trash"
-                                        size="small"
-                                        severity="danger"
-                                        @click="deleteSurvey(data)"
-                                        v-tooltip.top="'Eliminar formulario'"
-                                    />
-                                </div>
-                            </template>
-                        </Column>
+                        <!-- Row Expansion: Lista de formularios del producto -->
+                        <template #expansion="{ data }">
+                            <div class="p-3">
+                                <h4 class="text-lg font-semibold mb-3 text-900">
+                                    <i class="pi pi-file-edit mr-2 text-primary"></i>
+                                    Formularios de {{ data.product?.nombre || 'este producto' }}
+                                </h4>
+
+                                <DataTable
+                                    :value="data.surveys"
+                                    dataKey="id"
+                                    :rowHover="true"
+                                    responsiveLayout="scroll"
+                                    class="p-datatable-sm"
+                                >
+                                    <Column header="Formulario" style="min-width: 300px">
+                                        <template #body="{ data: survey }">
+                                            <div>
+                                                <div class="font-semibold text-900 mb-1">{{ survey.title }}</div>
+                                                <div class="text-sm text-600" v-if="survey.description">{{ survey.description }}</div>
+                                                <a
+                                                    v-if="survey.form_url"
+                                                    :href="survey.form_url"
+                                                    target="_blank"
+                                                    class="text-primary text-sm"
+                                                >
+                                                    <i class="pi pi-external-link text-xs"></i>
+                                                    Ver Hoja de Cálculo
+                                                </a>
+                                            </div>
+                                        </template>
+                                    </Column>
+
+                                    <Column header="Respuestas" style="min-width: 150px">
+                                        <template #body="{ data: survey }">
+                                            <Tag :value="`${survey.responses_count} respuestas`" severity="success" rounded />
+                                        </template>
+                                    </Column>
+
+                                    <Column header="Fecha" style="min-width: 150px">
+                                        <template #body="{ data: survey }">
+                                            <small class="text-500">{{ formatDate(survey.created_at) }}</small>
+                                        </template>
+                                    </Column>
+
+                                    <Column header="Análisis IA" style="min-width: 150px">
+                                        <template #body="{ data: survey }">
+                                            <div v-if="survey.analyses_count > 0">
+                                                <Tag :value="`${survey.analyses_count} analizadas`" severity="success" rounded />
+                                            </div>
+                                            <div v-else>
+                                                <Tag value="Sin analizar" severity="warning" rounded />
+                                            </div>
+                                        </template>
+                                    </Column>
+
+                                    <Column header="Acciones" style="min-width: 300px">
+                                        <template #body="{ data: survey }">
+                                            <div class="flex gap-2 flex-wrap">
+                                                <!-- Analizar con IA -->
+                                                <Button
+                                                    v-if="survey.analyses_count === 0"
+                                                    icon="pi pi-sparkles"
+                                                    label="Analizar con IA"
+                                                    size="small"
+                                                    severity="info"
+                                                    @click="analyzeWithIA(survey)"
+                                                    :loading="analyzing && analyzingSurveyId === survey.id"
+                                                    :disabled="analyzing || survey.responses_count === 0"
+                                                    v-tooltip.top="survey.responses_count === 0 ? 'No hay respuestas para analizar' : 'Analizar respuestas con IA'"
+                                                />
+
+                                                <!-- Ver análisis -->
+                                                <Button
+                                                    v-if="survey.analyses_count > 0"
+                                                    icon="pi pi-chart-bar"
+                                                    label="Ver Análisis"
+                                                    size="small"
+                                                    severity="success"
+                                                    @click="viewAnalysis(survey)"
+                                                    v-tooltip.top="'Ver resultados del análisis'"
+                                                />
+
+                                                <!-- Eliminar -->
+                                                <Button
+                                                    icon="pi pi-trash"
+                                                    size="small"
+                                                    severity="danger"
+                                                    @click="deleteSurvey(survey)"
+                                                    v-tooltip.top="'Eliminar formulario'"
+                                                />
+                                            </div>
+                                        </template>
+                                    </Column>
+                                </DataTable>
+                            </div>
+                        </template>
 
                         <template #empty>
                             <div class="text-center py-5">

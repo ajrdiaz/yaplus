@@ -10,6 +10,7 @@ class CopyGeneration extends Model
     protected $fillable = [
         'buyer_persona_id',
         'buyer_persona_type',
+        'product_id',
         'copy_type',
         'name',
         'headline',
@@ -30,6 +31,14 @@ class CopyGeneration extends Model
     public function buyerPersona(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /**
+     * Relación con producto
+     */
+    public function product()
+    {
+        return $this->belongsTo(Product::class);
     }
 
     /**

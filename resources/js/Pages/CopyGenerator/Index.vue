@@ -1,7 +1,6 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { router } from '@inertiajs/vue3';
-import AppLayout from '@/Layouts/AppLayout.vue';
 import Dropdown from 'primevue/dropdown';
 import Button from 'primevue/button';
 import Card from 'primevue/card';
@@ -17,10 +16,12 @@ const props = defineProps({
     buyerPersonas: Array,
     copyTypes: Object,
     recentCopies: Array,
+    products: Array,
 });
 
 // Estado del formulario
 const selectedPersona = ref(null);
+const selectedProduct = ref(null);
 const selectedCopyType = ref(null);
 const customName = ref('');
 const isGenerating = ref(false);
@@ -29,11 +30,18 @@ const errorMessage = ref('');
 
 // Opciones para los dropdowns
 const personaOptions = computed(() => {
-    return props.buyerPersonas.map(persona => ({
-        label: `${persona.nombre} (${persona.source} - ${persona.source_name})`,
-        value: { id: persona.id, type: persona.type },
-        ...persona
-    }));
+    if (!selectedProduct.value) {
+        return [];
+    }
+
+    // Filtrar buyer personas que pertenecen al producto seleccionado
+    return props.buyerPersonas
+        .filter(persona => persona.product_id === selectedProduct.value)
+        .map(persona => ({
+            label: `${persona.nombre} (${persona.source} - ${persona.source_name})`,
+            value: { id: persona.id, type: persona.type },
+            ...persona
+        }));
 });
 
 const copyTypeOptions = computed(() => {
@@ -43,10 +51,15 @@ const copyTypeOptions = computed(() => {
     }));
 });
 
+// Watcher para limpiar la selección de persona cuando cambie el producto
+watch(selectedProduct, () => {
+    selectedPersona.value = null;
+});
+
 // Generar copy
 const generateCopy = async () => {
-    if (!selectedPersona.value || !selectedCopyType.value) {
-        errorMessage.value = 'Por favor selecciona un Buyer Persona y un tipo de copy';
+    if (!selectedPersona.value || !selectedProduct.value || !selectedCopyType.value) {
+        errorMessage.value = 'Por favor selecciona un Buyer Persona, un Producto y un tipo de copy';
         return;
     }
 
@@ -58,6 +71,7 @@ const generateCopy = async () => {
         const response = await axios.post(route('copy.generate'), {
             buyer_persona_id: selectedPersona.value.id,
             buyer_persona_type: selectedPersona.value.type,
+            product_id: selectedProduct.value,
             copy_type: selectedCopyType.value,
             custom_name: customName.value || null,
         });
@@ -120,8 +134,7 @@ const getCopyIcon = (copyType) => {
 </script>
 
 <template>
-    <AppLayout title="Generador de Copy con IA">
-        <div class="p-4">
+    <div class="p-4">
             <!-- Header -->
             <div class="mb-6">
                 <h1 class="text-3xl font-bold text-gray-800 mb-2">
@@ -144,6 +157,34 @@ const getCopyIcon = (copyType) => {
                         </template>
                         <template #content>
                             <div class="space-y-4">
+                                <!-- Selector de Producto -->
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Producto *
+                                    </label>
+                                    <Dropdown
+                                        v-model="selectedProduct"
+                                        :options="products"
+                                        optionLabel="nombre"
+                                        optionValue="id"
+                                        placeholder="Selecciona un producto"
+                                        class="w-full"
+                                        :disabled="isGenerating"
+                                        filter
+                                    >
+                                        <template #value="slotProps">
+                                            <div v-if="slotProps.value" class="flex items-center gap-2">
+                                                <i class="pi pi-box text-primary"></i>
+                                                <span>{{ products.find(p => p.id === slotProps.value)?.nombre }}</span>
+                                            </div>
+                                            <span v-else>{{ slotProps.placeholder }}</span>
+                                        </template>
+                                        <template #option="slotProps">
+                                            <span class="font-semibold">{{ slotProps.option.nombre }}</span>
+                                        </template>
+                                    </Dropdown>
+                                </div>
+
                                 <!-- Selector de Buyer Persona -->
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -153,9 +194,9 @@ const getCopyIcon = (copyType) => {
                                         v-model="selectedPersona"
                                         :options="personaOptions"
                                         optionLabel="label"
-                                        placeholder="Selecciona un Buyer Persona"
+                                        :placeholder="!selectedProduct ? 'Primero selecciona un producto' : 'Selecciona un Buyer Persona'"
                                         class="w-full"
-                                        :disabled="isGenerating"
+                                        :disabled="isGenerating || !selectedProduct"
                                         filter
                                     >
                                         <template #value="slotProps">
@@ -176,7 +217,18 @@ const getCopyIcon = (copyType) => {
                                                 </span>
                                             </div>
                                         </template>
+                                        <template #empty>
+                                            <div class="p-3 text-center text-gray-500">
+                                                <i class="pi pi-info-circle mb-2"></i>
+                                                <p v-if="!selectedProduct">Selecciona un producto primero</p>
+                                                <p v-else>No hay Buyer Personas para este producto</p>
+                                            </div>
+                                        </template>
                                     </Dropdown>
+                                    <small v-if="selectedProduct && personaOptions.length === 0" class="text-orange-600">
+                                        <i class="pi pi-exclamation-triangle text-xs"></i>
+                                        No hay Buyer Personas creados para este producto. Debes analizar videos de YouTube o formularios de Google Forms primero.
+                                    </small>
                                 </div>
 
                                 <!-- Selector de Tipo de Copy -->
@@ -220,7 +272,7 @@ const getCopyIcon = (copyType) => {
                                         icon="pi pi-sparkles"
                                         @click="generateCopy"
                                         :loading="isGenerating"
-                                        :disabled="!selectedPersona || !selectedCopyType"
+                                        :disabled="!selectedPersona || !selectedProduct || !selectedCopyType"
                                         class="flex-1"
                                         severity="success"
                                     />
@@ -441,8 +493,7 @@ const getCopyIcon = (copyType) => {
                     </Card>
                 </div>
             </div>
-        </div>
-    </AppLayout>
+    </div>
 </template>
 
 <style scoped>

@@ -19,14 +19,29 @@ class GoogleFormsController extends Controller
     public function index()
     {
         try {
-            $surveys = FormSurvey::withCount(['responses', 'analyses'])
+            // Obtener todos los formularios con su producto
+            $allSurveys = FormSurvey::with('product')
+                ->withCount(['responses', 'analyses'])
                 ->orderBy('created_at', 'desc')
-                ->paginate(20);
+                ->get();
+
+            // Agrupar formularios por producto
+            $surveysByProduct = $allSurveys->groupBy('product_id')->map(function ($surveys, $productId) {
+                $product = $surveys->first()->product;
+
+                return [
+                    'product' => $product,
+                    'surveys' => $surveys->values(),
+                    'total_surveys' => $surveys->count(),
+                    'total_responses' => $surveys->sum('responses_count'),
+                    'total_analyses' => $surveys->sum('analyses_count'),
+                ];
+            })->values();
 
             $products = \App\Models\Product::orderBy('nombre')->get(['id', 'nombre', 'audiencia_objetivo']);
 
             return inertia('GoogleForms/Index', [
-                'surveys' => $surveys,
+                'surveysByProduct' => $surveysByProduct,
                 'products' => $products,
             ]);
         } catch (\Exception $e) {

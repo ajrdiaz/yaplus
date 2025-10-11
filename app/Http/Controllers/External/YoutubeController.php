@@ -354,14 +354,29 @@ class YoutubeController extends Controller
      */
     public function index()
     {
-        $videos = YoutubeVideo::withCount(['comments', 'analyses'])
+        // Obtener todos los videos con su producto
+        $allVideos = YoutubeVideo::with('product')
+            ->withCount(['comments', 'analyses'])
             ->orderBy('created_at', 'desc')
-            ->paginate(20);
+            ->get();
+
+        // Agrupar videos por producto
+        $videosByProduct = $allVideos->groupBy('product_id')->map(function ($videos, $productId) {
+            $product = $videos->first()->product;
+
+            return [
+                'product' => $product,
+                'videos' => $videos->values(),
+                'total_videos' => $videos->count(),
+                'total_comments' => $videos->sum('comments_count'),
+                'total_analyses' => $videos->sum('analyses_count'),
+            ];
+        })->values();
 
         $products = \App\Models\Product::orderBy('nombre')->get(['id', 'nombre', 'audiencia_objetivo']);
 
         return Inertia::render('Youtube/Index_Tabs', [
-            'videos' => $videos,
+            'videosByProduct' => $videosByProduct,
             'products' => $products,
         ]);
     }

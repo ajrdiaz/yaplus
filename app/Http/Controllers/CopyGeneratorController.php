@@ -24,7 +24,7 @@ class CopyGeneratorController extends Controller
     public function index()
     {
         // Obtener todas las buyer personas de ambas fuentes
-        $googleFormPersonas = BuyerPersona::with('survey')
+        $googleFormPersonas = BuyerPersona::with('survey.product')
             ->latest()
             ->get()
             ->map(function ($persona) {
@@ -35,11 +35,12 @@ class CopyGeneratorController extends Controller
                     'edad' => $persona->edad ?? 'No especificado',
                     'source' => 'Google Forms',
                     'source_name' => $persona->survey->title ?? 'Formulario',
+                    'product_id' => $persona->survey->product_id ?? null,
                     'created_at' => $persona->created_at->format('Y-m-d'),
                 ];
             });
 
-        $youtubePersonas = YoutubeBuyerPersona::with('video')
+        $youtubePersonas = YoutubeBuyerPersona::with('video.product')
             ->latest()
             ->get()
             ->map(function ($persona) {
@@ -50,6 +51,7 @@ class CopyGeneratorController extends Controller
                     'edad' => $persona->edad_rango,
                     'source' => 'YouTube',
                     'source_name' => $persona->video->title ?? 'Video',
+                    'product_id' => $persona->video->product_id ?? null,
                     'created_at' => $persona->created_at->format('Y-m-d'),
                 ];
             });
@@ -75,10 +77,14 @@ class CopyGeneratorController extends Controller
                 ];
             });
 
+        // Obtener productos
+        $products = \App\Models\Product::orderBy('nombre')->get(['id', 'nombre', 'audiencia_objetivo']);
+
         return Inertia::render('CopyGenerator/Index', [
             'buyerPersonas' => $allPersonas,
             'copyTypes' => $copyTypes,
             'recentCopies' => $recentCopies,
+            'products' => $products,
         ]);
     }
 
@@ -90,6 +96,7 @@ class CopyGeneratorController extends Controller
         $request->validate([
             'buyer_persona_id' => 'required|integer',
             'buyer_persona_type' => 'required|string',
+            'product_id' => 'required|exists:products,id',
             'copy_type' => 'required|string',
             'custom_name' => 'nullable|string|max:255',
         ]);
@@ -103,7 +110,8 @@ class CopyGeneratorController extends Controller
             $copy = $this->copyService->generateCopy(
                 $buyerPersona,
                 $request->copy_type,
-                $request->custom_name
+                $request->custom_name,
+                $request->product_id
             );
 
             return response()->json([
