@@ -3,14 +3,13 @@
 namespace App\Http\Controllers\External;
 
 use App\Http\Controllers\Controller;
-use App\Models\FormSurvey;
 use App\Models\FormResponse;
 use App\Models\FormResponseAnalysis;
-use App\Services\GoogleSheetsService;
+use App\Models\FormSurvey;
 use App\Services\FormAnalysisService;
+use App\Services\GoogleSheetsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Inertia\Inertia;
 
 class GoogleFormsController extends Controller
 {
@@ -24,11 +23,15 @@ class GoogleFormsController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->paginate(20);
 
+            $products = \App\Models\Product::orderBy('nombre')->get(['id', 'nombre', 'audiencia_objetivo']);
+
             return inertia('GoogleForms/Index', [
                 'surveys' => $surveys,
+                'products' => $products,
             ]);
         } catch (\Exception $e) {
-            Log::error('Error getting surveys: ' . $e->getMessage());
+            Log::error('Error getting surveys: '.$e->getMessage());
+
             return back()->with('error', 'Error al obtener los formularios');
         }
     }
@@ -42,17 +45,12 @@ class GoogleFormsController extends Controller
             'sheet_url' => 'required|string',
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            // Contexto de negocio (opcional)
-            'product_name' => 'nullable|string|max:255',
-            'product_description' => 'nullable|string',
-            'target_audience' => 'nullable|string',
-            'research_goal' => 'nullable|string',
-            'additional_context' => 'nullable|string',
+            'product_id' => 'required|exists:products,id',
         ]);
 
         try {
             // Verificar si el servicio está configurado
-            if (!$sheetsService->isConfigured()) {
+            if (! $sheetsService->isConfigured()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Google Sheets API no está configurada. Por favor, configura las credenciales.',
@@ -62,7 +60,7 @@ class GoogleFormsController extends Controller
             $sheetUrl = $request->input('sheet_url');
             $sheetId = GoogleSheetsService::extractSpreadsheetId($sheetUrl);
 
-            if (!$sheetId) {
+            if (! $sheetId) {
                 return response()->json([
                     'success' => false,
                     'message' => 'URL de Google Sheets inválida',
@@ -71,8 +69,8 @@ class GoogleFormsController extends Controller
 
             // Obtener información de la hoja
             $sheetInfo = $sheetsService->getSpreadsheetInfo($sheetId);
-            
-            if (!$sheetInfo) {
+
+            if (! $sheetInfo) {
                 return response()->json([
                     'success' => false,
                     'message' => 'No se pudo acceder a la hoja de cálculo. Verifica los permisos.',
@@ -83,22 +81,18 @@ class GoogleFormsController extends Controller
             $survey = FormSurvey::updateOrCreate(
                 ['sheet_id' => $sheetId],
                 [
+                    'product_id' => $request->input('product_id'),
                     'form_id' => $sheetId, // Usamos sheet_id como form_id por ahora
                     'title' => $request->input('title'),
                     'description' => $request->input('description'),
                     'form_url' => $sheetUrl,
-                    'product_name' => $request->input('product_name'),
-                    'product_description' => $request->input('product_description'),
-                    'target_audience' => $request->input('target_audience'),
-                    'research_goal' => $request->input('research_goal'),
-                    'additional_context' => $request->input('additional_context'),
                 ]
             );
 
             // Leer respuestas de la hoja (detecta automáticamente el nombre de la hoja)
             $data = $sheetsService->readSheet($sheetId, 'A:Z');
 
-            if (!$data || empty($data['responses'])) {
+            if (! $data || empty($data['responses'])) {
                 return response()->json([
                     'success' => false,
                     'message' => 'No se encontraron respuestas en la hoja. Verifica que el formulario tenga respuestas enviadas.',
@@ -110,18 +104,19 @@ class GoogleFormsController extends Controller
 
             foreach ($data['responses'] as $index => $responseData) {
                 // Generar un ID único para la respuesta
-                $responseId = md5($sheetId . '_' . $index . '_' . json_encode($responseData));
+                $responseId = md5($sheetId.'_'.$index.'_'.json_encode($responseData));
 
                 // Verificar si ya existe
                 if (FormResponse::where('response_id', $responseId)->exists()) {
                     $skipped++;
+
                     continue;
                 }
 
                 // Combinar todas las respuestas en un solo texto para análisis
                 $combinedText = '';
                 foreach ($responseData as $question => $answer) {
-                    if (!empty($answer) && $question !== 'Timestamp' && $question !== 'Marca temporal') {
+                    if (! empty($answer) && $question !== 'Timestamp' && $question !== 'Marca temporal') {
                         $combinedText .= "{$question}: {$answer}\n";
                     }
                 }
@@ -129,14 +124,14 @@ class GoogleFormsController extends Controller
                 // Parsear la fecha (puede venir en varios formatos)
                 $submittedAt = now();
                 $timestampField = $responseData['Timestamp'] ?? $responseData['Marca temporal'] ?? null;
-                
+
                 if ($timestampField) {
                     try {
                         // Detectar formato de fecha
                         if (preg_match('/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/', $timestampField, $matches)) {
                             $day = intval($matches[1]);
                             $month = intval($matches[2]);
-                            
+
                             // Si el primer número es > 12, es día (formato d/m/Y)
                             // Si el segundo número es > 12, es mes (formato m/d/Y)
                             if ($day > 12) {
@@ -156,7 +151,7 @@ class GoogleFormsController extends Controller
                     } catch (\Exception $e) {
                         Log::warning('No se pudo parsear fecha, usando fecha actual', [
                             'timestamp' => $timestampField,
-                            'error' => $e->getMessage()
+                            'error' => $e->getMessage(),
                         ]);
                         $submittedAt = now();
                     }
@@ -180,7 +175,7 @@ class GoogleFormsController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => "Se importaron {$imported} respuestas nuevas" . ($skipped > 0 ? " ({$skipped} duplicadas omitidas)" : ""),
+                'message' => "Se importaron {$imported} respuestas nuevas".($skipped > 0 ? " ({$skipped} duplicadas omitidas)" : ''),
                 'data' => [
                     'survey_id' => $survey->id,
                     'imported' => $imported,
@@ -192,12 +187,12 @@ class GoogleFormsController extends Controller
         } catch (\Exception $e) {
             Log::error('Error al importar respuestas de Google Forms', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error al importar respuestas: ' . $e->getMessage(),
+                'message' => 'Error al importar respuestas: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -251,7 +246,7 @@ class GoogleFormsController extends Controller
         } catch (\Exception $e) {
             Log::error('Error al analizar respuestas', [
                 'survey_id' => $surveyId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
@@ -269,7 +264,7 @@ class GoogleFormsController extends Controller
     {
         try {
             $survey = FormSurvey::with('responses', 'buyerPersonas')->findOrFail($surveyId);
-            
+
             $analyses = FormResponseAnalysis::with('response')
                 ->where('form_survey_id', $surveyId)
                 ->orderBy('relevance_score', 'desc')
@@ -287,7 +282,7 @@ class GoogleFormsController extends Controller
         } catch (\Exception $e) {
             Log::error('Error al obtener análisis', [
                 'survey_id' => $surveyId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return back()->with('error', 'Error al obtener análisis');
@@ -302,7 +297,7 @@ class GoogleFormsController extends Controller
         try {
             $result = $analysisService->generateBuyerPersonas($surveyId);
 
-            if (!$result['success']) {
+            if (! $result['success']) {
                 return response()->json([
                     'success' => false,
                     'message' => $result['message'] ?? 'Error al generar buyer personas',
@@ -318,7 +313,7 @@ class GoogleFormsController extends Controller
         } catch (\Exception $e) {
             Log::error('Error generating buyer personas', [
                 'survey_id' => $surveyId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
@@ -330,48 +325,13 @@ class GoogleFormsController extends Controller
     }
 
     /**
-     * Actualizar contexto de negocio de un formulario
-     */
-    public function updateContext(Request $request, FormSurvey $survey)
-    {
-        try {
-            $validated = $request->validate([
-                'product_name' => 'nullable|string|max:255',
-                'product_description' => 'nullable|string',
-                'target_audience' => 'nullable|string',
-                'research_goal' => 'nullable|string',
-                'additional_context' => 'nullable|string',
-            ]);
-
-            $survey->update($validated);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Contexto de negocio actualizado correctamente',
-                'survey' => $survey,
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Error al actualizar contexto de formulario', [
-                'survey_id' => $survey->id,
-                'error' => $e->getMessage()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al actualizar el contexto de negocio',
-            ], 500);
-        }
-    }
-
-    /**
      * Eliminar un formulario con todas sus respuestas y análisis
      */
     public function destroy($id)
     {
         try {
             $survey = FormSurvey::findOrFail($id);
-            
+
             $surveyTitle = $survey->title;
             $responsesCount = $survey->responses()->count();
 
@@ -386,7 +346,7 @@ class GoogleFormsController extends Controller
         } catch (\Exception $e) {
             Log::error('Error al eliminar formulario', [
                 'survey_id' => $id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([

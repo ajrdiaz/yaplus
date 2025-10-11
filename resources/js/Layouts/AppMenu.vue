@@ -13,6 +13,12 @@ const model = ref([
                 icon: 'pi pi-fw pi-box',
                 to: '/'
             },
+            {
+                label: 'Mis Productos',
+                icon: 'pi pi-fw pi-shopping-bag',
+                to: '/products',
+                route: route("products.index"),
+            },
         ]
     },
     {
@@ -30,6 +36,18 @@ const model = ref([
                 icon: 'pi pi-fw pi-google',
                 to: '/google-forms',
                 route: route("forms.index"),
+            },
+        ]
+    },
+    {
+        label: 'Marketing & AI',
+        icon: 'pi pi-sparkles',
+        items: [
+            {
+                label: 'Generador de Copy',
+                icon: 'pi pi-fw pi-pen-to-square',
+                to: '/copy-generator',
+                route: route("copy.index"),
             },
         ]
     },

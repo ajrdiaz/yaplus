@@ -11,6 +11,7 @@ import Badge from 'primevue/badge';
 import Textarea from 'primevue/textarea';
 import Dialog from 'primevue/dialog';
 import ProgressBar from 'primevue/progressbar';
+import Dropdown from 'primevue/dropdown';
 import { useToast } from 'primevue/usetoast';
 import axios from 'axios';
 
@@ -19,36 +20,20 @@ const props = defineProps({
         type: Object,
         default: () => ({ data: [], total: 0 })
     },
+    products: {
+        type: Array,
+        default: () => []
+    },
 });
 
 const toast = useToast();
 const loading = ref(false);
-const showBusinessContext = ref(false);
-
-// Variables para edición de contexto
-const showEditContextDialog = ref(false);
-const editingSurvey = ref(null);
-const savingContext = ref(false);
 
 const form = useForm({
     sheet_url: '',
     title: '',
     description: '',
-    // Contexto de negocio (opcional)
-    product_name: '',
-    product_description: '',
-    target_audience: '',
-    research_goal: '',
-    additional_context: '',
-});
-
-// Form para editar contexto
-const editContextForm = ref({
-    product_name: '',
-    product_description: '',
-    target_audience: '',
-    research_goal: '',
-    additional_context: '',
+    product_id: null,
 });
 
 const importResponses = () => {
@@ -68,11 +53,7 @@ const importResponses = () => {
         sheet_url: form.sheet_url,
         title: form.title,
         description: form.description,
-        product_name: form.product_name,
-        product_description: form.product_description,
-        target_audience: form.target_audience,
-        research_goal: form.research_goal,
-        additional_context: form.additional_context,
+        product_id: form.product_id,
     })
     .then(response => {
         if (response.data.success) {
@@ -100,58 +81,11 @@ const importResponses = () => {
     });
 };
 
-const openEditContextDialog = (survey) => {
-    editingSurvey.value = survey;
-    editContextForm.value = {
-        product_name: survey.product_name || '',
-        product_description: survey.product_description || '',
-        target_audience: survey.target_audience || '',
-        research_goal: survey.research_goal || '',
-        additional_context: survey.additional_context || '',
-    };
-    showEditContextDialog.value = true;
-};
-
-const saveBusinessContext = () => {
-    if (!editingSurvey.value) return;
-
-    savingContext.value = true;
-
-    axios.put(route('forms.survey.updateContext', editingSurvey.value.id), editContextForm.value)
-        .then(response => {
-            if (response.data.success) {
-                toast.add({
-                    severity: 'success',
-                    summary: 'Éxito',
-                    detail: 'Contexto actualizado correctamente',
-                    life: 3000
-                });
-                showEditContextDialog.value = false;
-                router.reload({ only: ['surveys'] });
-            }
-        })
-        .catch(error => {
-            toast.add({
-                severity: 'error',
-                summary: 'Error',
-                detail: 'Error al actualizar el contexto',
-                life: 3000
-            });
-        })
-        .finally(() => {
-            savingContext.value = false;
-        });
-};
-
 // Variables para análisis con IA
 const analyzing = ref(false);
 const analyzingSurveyId = ref(null);
 
 const analyzeWithIA = (survey) => {
-    if (!survey.product_name && !confirm('No has configurado el contexto de negocio.\n\nEl análisis será más preciso si configuras:\n- Nombre del producto\n- Audiencia objetivo\n\n¿Deseas continuar sin contexto?')) {
-        return;
-    }
-
     analyzingSurveyId.value = survey.id;
     analyzing.value = true;
 
@@ -286,118 +220,36 @@ const formatDate = (dateString) => {
                             />
                         </div>
 
-                        <!-- Contexto de Negocio (Opcional) -->
-                        <div class="col-12 mt-3">
-                            <div class="surface-100 border-round p-3">
-                                <div 
-                                    class="flex align-items-center justify-content-between cursor-pointer"
-                                    @click="showBusinessContext = !showBusinessContext"
-                                >
-                                    <div class="flex align-items-center gap-2">
-                                        <i class="pi pi-briefcase text-primary text-xl"></i>
-                                        <span class="font-semibold text-primary">
-                                            Contexto de Negocio (Opcional - Mejora el análisis con IA)
-                                        </span>
+                        <!-- Selector de Producto -->
+                        <div class="col-12" v-if="products.length > 0">
+                            <label class="block mb-2 font-semibold">
+                                <i class="pi pi-box mr-1 text-primary"></i>
+                                Seleccionar Producto <span class="text-red-500">*</span>
+                            </label>
+                            <Dropdown
+                                v-model="form.product_id"
+                                :options="products"
+                                optionLabel="nombre"
+                                optionValue="id"
+                                placeholder="Selecciona un producto..."
+                                :disabled="loading"
+                                class="w-full"
+                            >
+                                <template #value="slotProps">
+                                    <div v-if="slotProps.value" class="flex align-items-center gap-2">
+                                        <i class="pi pi-box text-primary"></i>
+                                        <span>{{ products.find(p => p.id === slotProps.value)?.nombre }}</span>
                                     </div>
-                                    <i :class="showBusinessContext ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"></i>
-                                </div>
-                                
-                                <div v-show="showBusinessContext" class="mt-3 grid">
-                                    <!-- Campos Principales -->
-                                    <div class="col-12">
-                                        <div class="flex align-items-center gap-2 mb-3">
-                                            <i class="pi pi-star-fill text-yellow-500"></i>
-                                            <span class="font-semibold text-900">Información Principal (Recomendada)</span>
-                                        </div>
-                                    </div>
-
-                                    <div class="col-12">
-                                        <label class="block mb-2 font-semibold">
-                                            <i class="pi pi-shopping-bag mr-1 text-primary"></i>
-                                            Nombre del Producto/Servicio
-                                            <Tag value="Recomendado" severity="warning" class="ml-2" />
-                                        </label>
-                                        <InputText
-                                            v-model="form.product_name"
-                                            placeholder="Ej: Curso de Marketing Digital"
-                                            class="w-full"
-                                            :disabled="loading"
-                                        />
-                                    </div>
-
-                                    <div class="col-12">
-                                        <label class="block mb-2 font-semibold">
-                                            <i class="pi pi-users mr-1 text-primary"></i>
-                                            Audiencia Objetivo
-                                            <Tag value="Recomendado" severity="warning" class="ml-2" />
-                                        </label>
-                                        <Textarea
-                                            v-model="form.target_audience"
-                                            placeholder="Ej: Emprendedores digitales de 25-40 años..."
-                                            rows="2"
-                                            class="w-full"
-                                            :disabled="loading"
-                                        />
-                                    </div>
-
-                                    <div class="col-12">
-                                        <label class="block mb-2 font-semibold">
-                                            <i class="pi pi-list mr-1 text-primary"></i>
-                                            Descripción del Producto
-                                        </label>
-                                        <Textarea
-                                            v-model="form.product_description"
-                                            placeholder="Ej: Curso online de 8 semanas..."
-                                            rows="2"
-                                            class="w-full"
-                                            :disabled="loading"
-                                        />
-                                    </div>
-
-                                    <!-- Divisor -->
-                                    <div class="col-12 my-2">
-                                        <hr class="border-300" />
-                                    </div>
-
-                                    <!-- Campos Opcionales -->
-                                    <div class="col-12">
-                                        <div class="flex align-items-center gap-2 mb-3">
-                                            <i class="pi pi-ellipsis-h text-500"></i>
-                                            <span class="font-semibold text-700">Información Adicional (Opcional)</span>
-                                        </div>
-                                    </div>
-
-                                    <div class="col-12 md:col-6">
-                                        <label class="block mb-2 font-semibold text-700">
-                                            <i class="pi pi-flag mr-1"></i>
-                                            Objetivo de Investigación
-                                            <Tag value="Opcional" severity="secondary" class="ml-2" />
-                                        </label>
-                                        <Textarea
-                                            v-model="form.research_goal"
-                                            placeholder="Ej: Identificar principales objeciones..."
-                                            rows="2"
-                                            class="w-full"
-                                            :disabled="loading"
-                                        />
-                                    </div>
-
-                                    <div class="col-12 md:col-6">
-                                        <label class="block mb-2 font-semibold text-700">
-                                            <i class="pi pi-info-circle mr-1"></i>
-                                            Contexto Adicional
-                                            <Tag value="Opcional" severity="secondary" class="ml-2" />
-                                        </label>
-                                        <Textarea
-                                            v-model="form.additional_context"
-                                            placeholder="Ej: Encuesta enviada a clientes actuales"
-                                            rows="2"
-                                            class="w-full"
-                                            :disabled="loading"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
+                                    <span v-else>{{ slotProps.placeholder }}</span>
+                                </template>
+                                <template #option="slotProps">
+                                    <span class="font-semibold">{{ slotProps.option.nombre }}</span>
+                                </template>
+                            </Dropdown>
+                            <small class="text-500">
+                                <i class="pi pi-info-circle text-xs"></i>
+                                Asocia este formulario a un producto existente para mejor organización
+                            </small>
                         </div>
 
                         <div class="col-12 mt-3">
@@ -502,16 +354,6 @@ const formatDate = (dateString) => {
                                         v-tooltip.top="'Ver resultados del análisis'"
                                     />
                                     
-                                    <!-- Editar contexto -->
-                                    <Button
-                                        icon="pi pi-briefcase"
-                                        size="small"
-                                        severity="secondary"
-                                        @click="openEditContextDialog(data)"
-                                        v-tooltip.top="'Editar contexto de negocio'"
-                                        :outlined="!data.product_name"
-                                    />
-                                    
                                     <!-- Eliminar -->
                                     <Button
                                         icon="pi pi-trash"
@@ -535,118 +377,5 @@ const formatDate = (dateString) => {
                 </template>
             </Card>
         </div>
-
-        <!-- Dialog para editar contexto -->
-        <Dialog 
-            v-model:visible="showEditContextDialog" 
-            modal 
-            :header="editingSurvey ? `Contexto de Negocio - ${editingSurvey.title}` : 'Contexto de Negocio'"
-            :style="{ width: '60rem' }"
-            :breakpoints="{ '1199px': '75vw', '575px': '90vw' }"
-        >
-            <div class="grid">
-                <div class="col-12">
-                    <div class="flex align-items-center gap-2 mb-3">
-                        <i class="pi pi-star-fill text-yellow-500"></i>
-                        <span class="font-semibold text-900">Información Principal (Recomendada)</span>
-                    </div>
-                </div>
-
-                <div class="col-12">
-                    <label class="block mb-2 font-semibold">
-                        <i class="pi pi-shopping-bag mr-1 text-primary"></i>
-                        Nombre del Producto/Servicio
-                        <Tag value="Recomendado" severity="warning" class="ml-2" />
-                    </label>
-                    <InputText
-                        v-model="editContextForm.product_name"
-                        placeholder="Ej: Curso de Marketing Digital"
-                        class="w-full"
-                    />
-                </div>
-
-                <div class="col-12">
-                    <label class="block mb-2 font-semibold">
-                        <i class="pi pi-users mr-1 text-primary"></i>
-                        Audiencia Objetivo
-                        <Tag value="Recomendado" severity="warning" class="ml-2" />
-                    </label>
-                    <Textarea
-                        v-model="editContextForm.target_audience"
-                        placeholder="Ej: Emprendedores digitales de 25-40 años..."
-                        rows="2"
-                        class="w-full"
-                    />
-                </div>
-
-                <div class="col-12">
-                    <label class="block mb-2 font-semibold">
-                        <i class="pi pi-list mr-1 text-primary"></i>
-                        Descripción del Producto
-                    </label>
-                    <Textarea
-                        v-model="editContextForm.product_description"
-                        placeholder="Ej: Curso online de 8 semanas..."
-                        rows="3"
-                        class="w-full"
-                    />
-                </div>
-
-                <div class="col-12 my-2">
-                    <hr class="border-300" />
-                </div>
-
-                <div class="col-12">
-                    <div class="flex align-items-center gap-2 mb-3">
-                        <i class="pi pi-ellipsis-h text-500"></i>
-                        <span class="font-semibold text-700">Información Adicional (Opcional)</span>
-                    </div>
-                </div>
-
-                <div class="col-12 md:col-6">
-                    <label class="block mb-2 font-semibold text-700">
-                        <i class="pi pi-flag mr-1"></i>
-                        Objetivo de Investigación
-                        <Tag value="Opcional" severity="secondary" class="ml-2" />
-                    </label>
-                    <Textarea
-                        v-model="editContextForm.research_goal"
-                        placeholder="Ej: Identificar principales objeciones..."
-                        rows="2"
-                        class="w-full"
-                    />
-                </div>
-
-                <div class="col-12 md:col-6">
-                    <label class="block mb-2 font-semibold text-700">
-                        <i class="pi pi-info-circle mr-1"></i>
-                        Contexto Adicional
-                        <Tag value="Opcional" severity="secondary" class="ml-2" />
-                    </label>
-                    <Textarea
-                        v-model="editContextForm.additional_context"
-                        placeholder="Ej: Encuesta enviada a clientes actuales"
-                        rows="2"
-                        class="w-full"
-                    />
-                </div>
-            </div>
-
-            <template #footer>
-                <Button 
-                    label="Cancelar" 
-                    icon="pi pi-times" 
-                    text 
-                    @click="showEditContextDialog = false" 
-                    :disabled="savingContext"
-                />
-                <Button 
-                    label="Guardar Cambios" 
-                    icon="pi pi-check" 
-                    @click="saveBusinessContext" 
-                    :loading="savingContext"
-                />
-            </template>
-        </Dialog>
     </div>
 </template>

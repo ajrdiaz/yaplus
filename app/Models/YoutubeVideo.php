@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class YoutubeVideo extends Model
 {
     protected $fillable = [
+        'product_id',
         'video_id',
         'title',
         'description',
@@ -23,12 +25,6 @@ class YoutubeVideo extends Model
         'like_count',
         'comment_count',
         'published_at',
-        // Contexto de negocio
-        'product_name',
-        'product_description',
-        'target_audience',
-        'research_goal',
-        'additional_context',
     ];
 
     protected $casts = [
@@ -55,13 +51,21 @@ class YoutubeVideo extends Model
     }
 
     /**
+     * Obtener el producto asociado
+     */
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+
+    /**
      * Obtener el thumbnail principal (high > medium > default)
      */
     public function getThumbnailAttribute(): ?string
     {
-        return $this->thumbnail_high 
-            ?? $this->thumbnail_medium 
-            ?? $this->thumbnail_default 
+        return $this->thumbnail_high
+            ?? $this->thumbnail_medium
+            ?? $this->thumbnail_default
             ?? $this->thumbnail_url;
     }
 }

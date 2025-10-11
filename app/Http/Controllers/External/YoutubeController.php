@@ -32,7 +32,6 @@ class YoutubeController extends Controller
     /**
      * Obtener comentarios de un video de YouTube
      *
-     * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function getComments(Request $request)
@@ -63,7 +62,7 @@ class YoutubeController extends Controller
                 // Formatear los comentarios para una respuesta más limpia
                 $comments = collect($data['items'] ?? [])->map(function ($item) {
                     $snippet = $item['snippet']['topLevelComment']['snippet'];
-                    
+
                     return [
                         'id' => $item['id'],
                         'author' => $snippet['authorDisplayName'],
@@ -112,7 +111,6 @@ class YoutubeController extends Controller
     /**
      * Obtener información de un video
      *
-     * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function getVideoInfo(Request $request)
@@ -132,7 +130,7 @@ class YoutubeController extends Controller
 
             if ($response->successful()) {
                 $data = $response->json();
-                
+
                 if (empty($data['items'])) {
                     return response()->json([
                         'success' => false,
@@ -182,10 +180,6 @@ class YoutubeController extends Controller
 
     /**
      * Obtener todos los comentarios con paginación
-     *
-     * @param string $videoId
-     * @param int|null $limit
-     * @return array
      */
     private function fetchAllComments(string $videoId, ?int $limit = null): array
     {
@@ -195,7 +189,7 @@ class YoutubeController extends Controller
 
         do {
             $maxResults = 100; // YouTube permite máximo 100 por petición
-            
+
             // Si hay límite, ajustar maxResults para la última petición
             if ($limit !== null && ($totalFetched + $maxResults) > $limit) {
                 $maxResults = $limit - $totalFetched;
@@ -215,7 +209,7 @@ class YoutubeController extends Controller
 
             $response = Http::get("{$this->baseUrl}/commentThreads", $params);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 break;
             }
 
@@ -260,18 +254,17 @@ class YoutubeController extends Controller
     /**
      * Formatear respuestas de comentarios
      *
-     * @param array|null $replies
-     * @return array
+     * @param  array|null  $replies
      */
     private function formatReplies($replies): array
     {
-        if (!$replies || !isset($replies['comments'])) {
+        if (! $replies || ! isset($replies['comments'])) {
             return [];
         }
 
         return collect($replies['comments'])->map(function ($reply) {
             $snippet = $reply['snippet'];
-            
+
             return [
                 'id' => $reply['id'],
                 'author' => $snippet['authorDisplayName'],
@@ -286,7 +279,6 @@ class YoutubeController extends Controller
     /**
      * Buscar videos
      *
-     * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function searchVideos(Request $request)
@@ -366,15 +358,18 @@ class YoutubeController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
+        $products = \App\Models\Product::orderBy('nombre')->get(['id', 'nombre', 'audiencia_objetivo']);
+
         return Inertia::render('Youtube/Index_Tabs', [
             'videos' => $videos,
+            'products' => $products,
         ]);
     }
 
     /**
      * Obtener comentarios de un video específico
      *
-     * @param int $videoId
+     * @param  int  $videoId
      * @return \Illuminate\Http\JsonResponse
      */
     public function getVideoComments($videoId)
@@ -392,9 +387,6 @@ class YoutubeController extends Controller
 
     /**
      * Extraer el video ID de una URL de YouTube
-     *
-     * @param string $url
-     * @return string|null
      */
     private function extractVideoId(string $url): ?string
     {
@@ -422,7 +414,6 @@ class YoutubeController extends Controller
     /**
      * Importar comentarios desde YouTube y guardar en BD
      *
-     * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function importComments(Request $request)
@@ -431,12 +422,7 @@ class YoutubeController extends Controller
             'video_url' => 'required|string',
             'max_results' => 'nullable|integer|min:1',
             'import_all' => 'nullable|boolean',
-            // Contexto de negocio (opcional)
-            'product_name' => 'nullable|string|max:255',
-            'product_description' => 'nullable|string',
-            'target_audience' => 'nullable|string',
-            'research_goal' => 'nullable|string',
-            'additional_context' => 'nullable|string',
+            'product_id' => 'required|exists:products,id',
         ]);
 
         $videoUrl = $request->input('video_url');
@@ -446,7 +432,7 @@ class YoutubeController extends Controller
         // Extraer video ID de la URL
         $videoId = $this->extractVideoId($videoUrl);
 
-        if (!$videoId) {
+        if (! $videoId) {
             return response()->json([
                 'success' => false,
                 'message' => 'URL de video inválida. Usa un formato como: https://www.youtube.com/watch?v=VIDEO_ID',
@@ -461,7 +447,7 @@ class YoutubeController extends Controller
                 'key' => $this->apiKey,
             ]);
 
-            if (!$videoResponse->successful()) {
+            if (! $videoResponse->successful()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'No se pudo obtener información del video',
@@ -469,7 +455,7 @@ class YoutubeController extends Controller
             }
 
             $videoData = $videoResponse->json();
-            
+
             if (empty($videoData['items'])) {
                 return response()->json([
                     'success' => false,
@@ -486,6 +472,7 @@ class YoutubeController extends Controller
             $youtubeVideo = YoutubeVideo::updateOrCreate(
                 ['video_id' => $videoId],
                 [
+                    'product_id' => $request->input('product_id'),
                     'title' => $videoSnippet['title'],
                     'description' => $videoSnippet['description'] ?? null,
                     'channel_id' => $videoSnippet['channelId'],
@@ -500,12 +487,6 @@ class YoutubeController extends Controller
                     'like_count' => $videoStats['likeCount'] ?? 0,
                     'comment_count' => $videoStats['commentCount'] ?? 0,
                     'published_at' => $videoSnippet['publishedAt'],
-                    // Contexto de negocio
-                    'product_name' => $request->input('product_name'),
-                    'product_description' => $request->input('product_description'),
-                    'target_audience' => $request->input('target_audience'),
-                    'research_goal' => $request->input('research_goal'),
-                    'additional_context' => $request->input('additional_context'),
                 ]
             );
 
@@ -518,7 +499,7 @@ class YoutubeController extends Controller
                     'message' => "Este video tiene {$totalComments} comentarios. ¿Estás seguro de importar todos?",
                     'requires_confirmation' => true,
                     'total_comments' => $totalComments,
-                    'estimated_time' => ceil($totalComments / 100) . ' minutos aproximadamente',
+                    'estimated_time' => ceil($totalComments / 100).' minutos aproximadamente',
                 ], 200);
             }
 
@@ -540,6 +521,7 @@ class YoutubeController extends Controller
                 // Verificar si el comentario ya existe
                 if (YoutubeComment::where('comment_id', $commentData['comment_id'])->exists()) {
                     $skippedCount++;
+
                     continue;
                 }
 
@@ -590,7 +572,6 @@ class YoutubeController extends Controller
     /**
      * Eliminar un comentario
      *
-     * @param YoutubeComment $comment
      * @return \Illuminate\Http\JsonResponse
      */
     public function destroy(YoutubeComment $comment)
@@ -650,8 +631,6 @@ class YoutubeController extends Controller
     /**
      * Analizar comentarios de un video con IA
      *
-     * @param Request $request
-     * @param CommentAnalysisService $analysisService
      * @return \Illuminate\Http\JsonResponse
      */
     public function analyzeComments(Request $request, CommentAnalysisService $analysisService)
@@ -676,7 +655,7 @@ class YoutubeController extends Controller
         } catch (\Exception $e) {
             Log::error('Error al analizar comentarios', [
                 'video_id' => $videoId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
@@ -690,15 +669,14 @@ class YoutubeController extends Controller
     /**
      * Obtener análisis de comentarios de un video
      *
-     * @param int $videoId
-     * @param CommentAnalysisService $analysisService
+     * @param  int  $videoId
      * @return \Illuminate\Http\JsonResponse
      */
     public function getAnalysis($videoId, CommentAnalysisService $analysisService)
     {
         try {
             $video = YoutubeVideo::withCount('comments')->findOrFail($videoId);
-            
+
             $analyses = YoutubeCommentAnalysis::with('comment')
                 ->where('youtube_video_id', $videoId)
                 ->orderBy('relevance_score', 'desc')
@@ -719,7 +697,7 @@ class YoutubeController extends Controller
         } catch (\Exception $e) {
             Log::error('Error al obtener análisis', [
                 'video_id' => $videoId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return back()->with('error', 'Error al obtener análisis');
@@ -729,7 +707,6 @@ class YoutubeController extends Controller
     /**
      * Filtrar análisis por categoría o sentimiento
      *
-     * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function filterAnalysis(Request $request)
@@ -772,7 +749,7 @@ class YoutubeController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Error al filtrar análisis', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
@@ -783,62 +760,16 @@ class YoutubeController extends Controller
     }
 
     /**
-     * Actualizar el contexto de negocio de un video
-     *
-     * @param \Illuminate\Http\Request $request
-     * @param \App\Models\YoutubeVideo $video
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function updateContext(Request $request, YoutubeVideo $video)
-    {
-        try {
-            $validated = $request->validate([
-                'product_name' => 'nullable|string|max:255',
-                'product_description' => 'nullable|string',
-                'target_audience' => 'nullable|string',
-                'research_goal' => 'nullable|string',
-                'additional_context' => 'nullable|string',
-            ]);
-
-            $video->update($validated);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Contexto de negocio actualizado correctamente',
-                'video' => $video,
-            ]);
-
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error de validación',
-                'errors' => $e->errors(),
-            ], 422);
-
-        } catch (\Exception $e) {
-            Log::error('Error al actualizar contexto de video', [
-                'video_id' => $video->id,
-                'error' => $e->getMessage()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al actualizar el contexto de negocio',
-            ], 500);
-        }
-    }
-
-    /**
      * Eliminar un video con todos sus comentarios y análisis
      *
-     * @param int $id
+     * @param  int  $id
      * @return \Illuminate\Http\JsonResponse
      */
     public function destroyVideo($id)
     {
         try {
             $video = YoutubeVideo::findOrFail($id);
-            
+
             $videoTitle = $video->title;
             $commentsCount = $video->comments()->count();
 
@@ -853,7 +784,7 @@ class YoutubeController extends Controller
         } catch (\Exception $e) {
             Log::error('Error al eliminar video', [
                 'video_id' => $id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([
@@ -866,8 +797,7 @@ class YoutubeController extends Controller
     /**
      * Generar buyer personas a partir de análisis de comentarios
      *
-     * @param int $videoId
-     * @param CommentAnalysisService $analysisService
+     * @param  int  $videoId
      * @return \Illuminate\Http\JsonResponse
      */
     public function generateBuyerPersonas($videoId, CommentAnalysisService $analysisService)
@@ -875,7 +805,7 @@ class YoutubeController extends Controller
         try {
             $result = $analysisService->generateBuyerPersonas($videoId);
 
-            if (!$result['success']) {
+            if (! $result['success']) {
                 return response()->json([
                     'success' => false,
                     'message' => $result['message'] ?? 'Error al generar buyer personas',
@@ -891,7 +821,7 @@ class YoutubeController extends Controller
         } catch (\Exception $e) {
             Log::error('Error generating buyer personas', [
                 'video_id' => $videoId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return response()->json([

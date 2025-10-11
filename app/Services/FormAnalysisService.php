@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Log;
 class FormAnalysisService
 {
     private $apiKey;
+
     private $model;
 
     public function __construct()
@@ -27,6 +28,7 @@ class FormAnalysisService
     public function analyzeSurveyResponses($surveyId, $limit = null, $progressCallback = null)
     {
         $query = FormResponse::where('form_survey_id', $surveyId)
+            ->with('survey.product')
             ->whereDoesntHave('analysis')
             ->whereRaw('LENGTH(combined_text) > 20'); // Filtrar respuestas muy cortas
 
@@ -43,11 +45,12 @@ class FormAnalysisService
             // Doble verificación
             if (strlen($response->combined_text) <= 20) {
                 $skipped++;
+
                 continue;
             }
 
             $analysis = $this->analyzeResponse($response);
-            
+
             if ($analysis) {
                 $analyzed++;
             } else {
@@ -81,7 +84,7 @@ class FormAnalysisService
             $systemPrompt = $this->getSystemPrompt($response->survey);
 
             $apiResponse = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Authorization' => 'Bearer '.$this->apiKey,
                 'Content-Type' => 'application/json',
             ])->timeout(60)->post('https://api.openai.com/v1/chat/completions', [
                 'model' => $this->model,
@@ -93,16 +96,17 @@ class FormAnalysisService
                 'max_tokens' => 1000,
             ]);
 
-            if (!$apiResponse->successful()) {
+            if (! $apiResponse->successful()) {
                 Log::error('Error en API de OpenAI', [
                     'status' => $apiResponse->status(),
-                    'response' => $apiResponse->body()
+                    'response' => $apiResponse->body(),
                 ]);
+
                 return null;
             }
 
             $content = $apiResponse->json('choices.0.message.content');
-            
+
             // Limpiar markdown si existe
             $content = preg_replace('/```json\n?/', '', $content);
             $content = preg_replace('/```\n?/', '', $content);
@@ -110,11 +114,12 @@ class FormAnalysisService
 
             $analysisData = json_decode($content, true);
 
-            if (!$analysisData) {
+            if (! $analysisData) {
                 Log::error('No se pudo parsear la respuesta de OpenAI', [
                     'response_id' => $response->id,
-                    'content' => $content
+                    'content' => $content,
                 ]);
+
                 return null;
             }
 
@@ -134,8 +139,9 @@ class FormAnalysisService
         } catch (\Exception $e) {
             Log::error('Error al analizar respuesta de formulario', [
                 'response_id' => $response->id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return null;
         }
     }
@@ -147,57 +153,58 @@ class FormAnalysisService
     {
         $survey = $response->survey;
         $contextInfo = '';
-        
-        // Agregar contexto de negocio si está disponible
-        if ($survey && ($survey->product_name || $survey->target_audience || $survey->research_goal)) {
+
+        // Agregar contexto de negocio desde el producto asociado
+        if ($survey && $survey->product) {
+            $product = $survey->product;
             $contextInfo = "\n--- CONTEXTO DEL NEGOCIO ---\n";
-            
-            if ($survey->product_name) {
-                $contextInfo .= "Producto/Servicio: {$survey->product_name}\n";
+
+            if ($product->nombre) {
+                $contextInfo .= "Producto/Servicio: {$product->nombre}\n";
             }
-            
-            if ($survey->product_description) {
-                $contextInfo .= "Descripción: {$survey->product_description}\n";
+
+            if ($product->descripcion) {
+                $contextInfo .= "Descripción: {$product->descripcion}\n";
             }
-            
-            if ($survey->target_audience) {
-                $contextInfo .= "Audiencia objetivo: {$survey->target_audience}\n";
+
+            if ($product->audiencia_objetivo) {
+                $contextInfo .= "Audiencia objetivo: {$product->audiencia_objetivo}\n";
             }
-            
-            if ($survey->research_goal) {
-                $contextInfo .= "Objetivo de investigación: {$survey->research_goal}\n";
+
+            if ($product->puntos_dolor) {
+                $contextInfo .= "Puntos de dolor conocidos: {$product->puntos_dolor}\n";
             }
-            
-            if ($survey->additional_context) {
-                $contextInfo .= "Contexto adicional: {$survey->additional_context}\n";
+
+            if ($product->beneficios_clave) {
+                $contextInfo .= "Beneficios clave: {$product->beneficios_clave}\n";
             }
-            
+
             $contextInfo .= "--- FIN CONTEXTO ---\n\n";
         }
-        
-        return $contextInfo .
-               "Analiza la siguiente respuesta de encuesta:\n\n" .
-               "Respuesta: {$response->combined_text}\n\n" .
-               "Responde ÚNICAMENTE en formato JSON válido con esta estructura EXACTA:\n" .
-               "{\n" .
-               '  "category": "<UNA de estas opciones: necesidad, dolor, sueño, objecion, pregunta, experiencia_positiva, experiencia_negativa, sugerencia, otro>",' . "\n" .
-               '  "sentiment": "<UNA de estas opciones: positivo, negativo, neutral>",' . "\n" .
-               '  "relevance_score": <número del 1 al 10>,' . "\n" .
-               '  "is_relevant": <true o false>,' . "\n" .
-               '  "keywords": ["palabra1", "palabra2", "palabra3"],' . "\n" .
-               '  "insights": {' . "\n" .
-               '    "buyer_insight": "insight principal del buyer persona",' . "\n" .
-               '    "pain_point": "punto de dolor identificado",' . "\n" .
-               '    "opportunity": "oportunidad de negocio"' . "\n" .
-               '  },' . "\n" .
-               '  "analysis": "análisis detallado de la respuesta"' . "\n" .
-               "}\n\n" .
-               "IMPORTANTE: \n" .
-               "- Para 'category', debes elegir SOLO UNA palabra de la lista\n" .
-               "- Para 'sentiment', debes elegir SOLO UNA palabra: positivo, negativo o neutral\n" .
-               "- NO uses pipes (|) ni incluyas todas las opciones\n" .
-               "- Ejemplo correcto: \"category\": \"necesidad\"\n" .
-               "- Ejemplo INCORRECTO: \"category\": \"necesidad|dolor|sueño\"";
+
+        return $contextInfo.
+               "Analiza la siguiente respuesta de encuesta:\n\n".
+               "Respuesta: {$response->combined_text}\n\n".
+               "Responde ÚNICAMENTE en formato JSON válido con esta estructura EXACTA:\n".
+               "{\n".
+               '  "category": "<UNA de estas opciones: necesidad, dolor, sueño, objecion, pregunta, experiencia_positiva, experiencia_negativa, sugerencia, otro>",'."\n".
+               '  "sentiment": "<UNA de estas opciones: positivo, negativo, neutral>",'."\n".
+               '  "relevance_score": <número del 1 al 10>,'."\n".
+               '  "is_relevant": <true o false>,'."\n".
+               '  "keywords": ["palabra1", "palabra2", "palabra3"],'."\n".
+               '  "insights": {'."\n".
+               '    "buyer_insight": "insight principal del buyer persona",'."\n".
+               '    "pain_point": "punto de dolor identificado",'."\n".
+               '    "opportunity": "oportunidad de negocio"'."\n".
+               '  },'."\n".
+               '  "analysis": "análisis detallado de la respuesta"'."\n".
+               "}\n\n".
+               "IMPORTANTE: \n".
+               "- Para 'category', debes elegir SOLO UNA palabra de la lista\n".
+               "- Para 'sentiment', debes elegir SOLO UNA palabra: positivo, negativo o neutral\n".
+               "- NO uses pipes (|) ni incluyas todas las opciones\n".
+               "- Ejemplo correcto: \"category\": \"necesidad\"\n".
+               '- Ejemplo INCORRECTO: "category": "necesidad|dolor|sueño"';
     }
 
     /**
@@ -205,24 +212,24 @@ class FormAnalysisService
      */
     private function getSystemPrompt(?FormSurvey $survey = null): string
     {
-        $basePrompt = "Eres un experto en investigación de buyer persona y análisis de respuestas de encuestas. " .
-                     "Tu objetivo es analizar respuestas de encuestas para identificar:\n" .
-                     "- Necesidades: Lo que el usuario necesita o busca\n" .
-                     "- Dolores: Problemas, frustraciones o dificultades\n" .
-                     "- Sueños: Aspiraciones, objetivos o situación ideal\n" .
-                     "- Objeciones: Razones para no comprar o dudas\n" .
-                     "- Preguntas: Dudas o información que buscan\n" .
-                     "- Experiencias positivas: Cosas que funcionaron bien\n" .
-                     "- Experiencias negativas: Cosas que no funcionaron\n" .
+        $basePrompt = 'Eres un experto en investigación de buyer persona y análisis de respuestas de encuestas. '.
+                     "Tu objetivo es analizar respuestas de encuestas para identificar:\n".
+                     "- Necesidades: Lo que el usuario necesita o busca\n".
+                     "- Dolores: Problemas, frustraciones o dificultades\n".
+                     "- Sueños: Aspiraciones, objetivos o situación ideal\n".
+                     "- Objeciones: Razones para no comprar o dudas\n".
+                     "- Preguntas: Dudas o información que buscan\n".
+                     "- Experiencias positivas: Cosas que funcionaron bien\n".
+                     "- Experiencias negativas: Cosas que no funcionaron\n".
                      "- Sugerencias: Ideas de mejora o características deseadas\n\n";
 
-        if ($survey && ($survey->product_name || $survey->target_audience)) {
-            $basePrompt .= "IMPORTANTE: Analiza las respuestas EN RELACIÓN al contexto específico del negocio proporcionado. ";
+        if ($survey && $survey->product) {
+            $basePrompt .= 'IMPORTANTE: Analiza las respuestas EN RELACIÓN al contexto específico del negocio proporcionado. ';
             $basePrompt .= "Identifica necesidades, dolores y oportunidades específicas para este producto/audiencia.\n\n";
         }
 
-        $basePrompt .= "Analiza el sentimiento (positivo, negativo, neutral) y la relevancia (1-10) de cada respuesta. " .
-                      "Extrae keywords relevantes e insights accionables para el buyer persona.";
+        $basePrompt .= 'Analiza el sentimiento (positivo, negativo, neutral) y la relevancia (1-10) de cada respuesta. '.
+                      'Extrae keywords relevantes e insights accionables para el buyer persona.';
 
         return $basePrompt;
     }
@@ -233,14 +240,14 @@ class FormAnalysisService
     public function generateBuyerPersonas($surveyId, $numPersonas = 4)
     {
         try {
-            $survey = FormSurvey::findOrFail($surveyId);
-            
+            $survey = FormSurvey::with('product')->findOrFail($surveyId);
+
             // Obtener todos los análisis con sus respuestas
             $analyses = FormResponseAnalysis::whereHas('response', function ($query) use ($surveyId) {
                 $query->where('form_survey_id', $surveyId);
             })
-            ->with('response')
-            ->get();
+                ->with('response')
+                ->get();
 
             if ($analyses->isEmpty()) {
                 return [
@@ -266,29 +273,30 @@ class FormAnalysisService
 
             // Llamar a OpenAI
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Authorization' => 'Bearer '.$this->apiKey,
                 'Content-Type' => 'application/json',
             ])->timeout(120)->post('https://api.openai.com/v1/chat/completions', [
                 'model' => $this->model,
                 'messages' => [
                     [
                         'role' => 'system',
-                        'content' => 'Eres un experto en marketing y análisis de buyer personas. Tu trabajo es identificar patrones en los datos y crear perfiles de cliente ideal detallados y accionables.'
+                        'content' => 'Eres un experto en marketing y análisis de buyer personas. Tu trabajo es identificar patrones en los datos y crear perfiles de cliente ideal detallados y accionables.',
                     ],
                     [
                         'role' => 'user',
-                        'content' => $prompt
-                    ]
+                        'content' => $prompt,
+                    ],
                 ],
                 'temperature' => 0.7,
                 'max_tokens' => 3000,
             ]);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 Log::error('OpenAI API error generating buyer personas', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return [
                     'success' => false,
                     'message' => 'Error al generar buyer personas con OpenAI',
@@ -298,7 +306,7 @@ class FormAnalysisService
             $result = $response->json();
             $content = $result['choices'][0]['message']['content'] ?? null;
 
-            if (!$content) {
+            if (! $content) {
                 return [
                     'success' => false,
                     'message' => 'No se pudo obtener respuesta de OpenAI',
@@ -309,14 +317,15 @@ class FormAnalysisService
             $content = trim($content);
             $content = preg_replace('/^```json\s*/i', '', $content);
             $content = preg_replace('/\s*```$/', '', $content);
-            
+
             $personas = json_decode($content, true);
 
             if (json_last_error() !== JSON_ERROR_NONE) {
                 Log::error('Error parsing buyer personas JSON', [
                     'error' => json_last_error_msg(),
-                    'content' => $content
+                    'content' => $content,
                 ]);
+
                 return [
                     'success' => false,
                     'message' => 'Error al procesar la respuesta de OpenAI',
@@ -360,18 +369,18 @@ class FormAnalysisService
                     'total_responses' => $analyses->count(),
                     'generated_at' => now()->toIso8601String(),
                     'saved_to_database' => true,
-                ]
+                ],
             ];
 
         } catch (\Exception $e) {
             Log::error('Error generating buyer personas', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return [
                 'success' => false,
-                'message' => 'Error al generar buyer personas: ' . $e->getMessage(),
+                'message' => 'Error al generar buyer personas: '.$e->getMessage(),
             ];
         }
     }
@@ -382,44 +391,56 @@ class FormAnalysisService
     private function buildBuyerPersonaPrompt($survey, $analysisData, $numPersonas)
     {
         $contextInfo = "CONTEXTO DEL NEGOCIO:\n";
-        if ($survey->product_name) {
-            $contextInfo .= "Producto: {$survey->product_name}\n";
+        $contextInfo .= "Formulario: {$survey->form_title}\n";
+
+        // Agregar contexto desde el producto asociado
+        if ($survey->product) {
+            $product = $survey->product;
+
+            if ($product->nombre) {
+                $contextInfo .= "Producto: {$product->nombre}\n";
+            }
+
+            if ($product->descripcion) {
+                $contextInfo .= "Descripción: {$product->descripcion}\n";
+            }
+
+            if ($product->audiencia_objetivo) {
+                $contextInfo .= "Audiencia objetivo: {$product->audiencia_objetivo}\n";
+            }
+
+            if ($product->puntos_dolor) {
+                $contextInfo .= "Puntos de dolor conocidos: {$product->puntos_dolor}\n";
+            }
+
+            if ($product->beneficios_clave) {
+                $contextInfo .= "Beneficios clave: {$product->beneficios_clave}\n";
+            }
         }
-        if ($survey->product_description) {
-            $contextInfo .= "Descripción: {$survey->product_description}\n";
-        }
-        if ($survey->target_audience) {
-            $contextInfo .= "Audiencia objetivo: {$survey->target_audience}\n";
-        }
-        if ($survey->research_goal) {
-            $contextInfo .= "Objetivo de investigación: {$survey->research_goal}\n";
-        }
-        if ($survey->additional_context) {
-            $contextInfo .= "Contexto adicional: {$survey->additional_context}\n";
-        }
+
         $contextInfo .= "\n";
 
         // Estadísticas generales
         $categoryCounts = [];
         $sentimentCounts = [];
         $allKeywords = [];
-        
+
         foreach ($analysisData as $item) {
             $cat = $item['category'] ?? 'otro';
             $categoryCounts[$cat] = ($categoryCounts[$cat] ?? 0) + 1;
-            
+
             $sent = $item['sentiment'] ?? 'neutral';
             $sentimentCounts[$sent] = ($sentimentCounts[$sent] ?? 0) + 1;
-            
-            if (!empty($item['keywords'])) {
+
+            if (! empty($item['keywords'])) {
                 $allKeywords = array_merge($allKeywords, $item['keywords']);
             }
         }
 
         $statsInfo = "ESTADÍSTICAS GENERALES:\n";
-        $statsInfo .= "Total de respuestas analizadas: " . count($analysisData) . "\n";
-        $statsInfo .= "Categorías: " . json_encode($categoryCounts) . "\n";
-        $statsInfo .= "Sentimientos: " . json_encode($sentimentCounts) . "\n";
+        $statsInfo .= 'Total de respuestas analizadas: '.count($analysisData)."\n";
+        $statsInfo .= 'Categorías: '.json_encode($categoryCounts)."\n";
+        $statsInfo .= 'Sentimientos: '.json_encode($sentimentCounts)."\n";
         $statsInfo .= "\n";
 
         // Datos de análisis (resumidos)
@@ -427,37 +448,37 @@ class FormAnalysisService
         $analysisInfo .= json_encode($analysisData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         $analysisInfo .= "\n\n";
 
-        return $contextInfo . $statsInfo . $analysisInfo .
-               "TAREA:\n" .
-               "Analiza todos los datos anteriores y genera EXACTAMENTE {$numPersonas} buyer personas diferentes.\n" .
-               "Cada buyer persona debe representar un segmento significativo de la audiencia.\n\n" .
-               "Responde ÚNICAMENTE en formato JSON válido con esta estructura:\n" .
-               "{\n" .
-               '  "personas": [' . "\n" .
-               '    {' . "\n" .
-               '      "nombre": "Nombre representativo",' . "\n" .
-               '      "edad": "Rango de edad (ej: 25-35)",' . "\n" .
-               '      "ocupacion": "Ocupación principal",' . "\n" .
-               '      "descripcion": "Descripción breve del perfil",' . "\n" .
-               '      "motivaciones": ["motivación 1", "motivación 2", "motivación 3"],' . "\n" .
-               '      "pain_points": ["dolor 1", "dolor 2", "dolor 3"],' . "\n" .
-               '      "suenos": ["sueño 1", "sueño 2"],' . "\n" .
-               '      "objeciones": ["objeción 1", "objeción 2"],' . "\n" .
-               '      "comportamiento": "Descripción de su comportamiento de compra",' . "\n" .
-               '      "canales_preferidos": ["canal 1", "canal 2"],' . "\n" .
-               '      "keywords_clave": ["palabra 1", "palabra 2", "palabra 3"],' . "\n" .
-               '      "porcentaje_audiencia": 25,' . "\n" .
-               '      "nivel_prioridad": "alta|media|baja",' . "\n" .
-               '      "estrategia_recomendada": "Cómo abordar a este segmento"' . "\n" .
-               '    }' . "\n" .
-               '  ]' . "\n" .
-               "}\n\n" .
-               "IMPORTANTE:\n" .
-               "- Crea perfiles DISTINTOS y bien diferenciados\n" .
-               "- Basa cada perfil en patrones reales de los datos\n" .
-               "- Los porcentajes de audiencia deben sumar aproximadamente 100\n" .
-               "- Ordena por nivel de prioridad (alta primero)\n" .
-               "- Sé específico y accionable en las estrategias";
+        return $contextInfo.$statsInfo.$analysisInfo.
+               "TAREA:\n".
+               "Analiza todos los datos anteriores y genera EXACTAMENTE {$numPersonas} buyer personas diferentes.\n".
+               "Cada buyer persona debe representar un segmento significativo de la audiencia.\n\n".
+               "Responde ÚNICAMENTE en formato JSON válido con esta estructura:\n".
+               "{\n".
+               '  "personas": ['."\n".
+               '    {'."\n".
+               '      "nombre": "Nombre representativo",'."\n".
+               '      "edad": "Rango de edad (ej: 25-35)",'."\n".
+               '      "ocupacion": "Ocupación principal",'."\n".
+               '      "descripcion": "Descripción breve del perfil",'."\n".
+               '      "motivaciones": ["motivación 1", "motivación 2", "motivación 3"],'."\n".
+               '      "pain_points": ["dolor 1", "dolor 2", "dolor 3"],'."\n".
+               '      "suenos": ["sueño 1", "sueño 2"],'."\n".
+               '      "objeciones": ["objeción 1", "objeción 2"],'."\n".
+               '      "comportamiento": "Descripción de su comportamiento de compra",'."\n".
+               '      "canales_preferidos": ["canal 1", "canal 2"],'."\n".
+               '      "keywords_clave": ["palabra 1", "palabra 2", "palabra 3"],'."\n".
+               '      "porcentaje_audiencia": 25,'."\n".
+               '      "nivel_prioridad": "alta|media|baja",'."\n".
+               '      "estrategia_recomendada": "Cómo abordar a este segmento"'."\n".
+               '    }'."\n".
+               '  ]'."\n".
+               "}\n\n".
+               "IMPORTANTE:\n".
+               "- Crea perfiles DISTINTOS y bien diferenciados\n".
+               "- Basa cada perfil en patrones reales de los datos\n".
+               "- Los porcentajes de audiencia deben sumar aproximadamente 100\n".
+               "- Ordena por nivel de prioridad (alta primero)\n".
+               '- Sé específico y accionable en las estrategias';
     }
 
     /**

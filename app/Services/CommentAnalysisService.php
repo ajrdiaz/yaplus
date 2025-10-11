@@ -84,7 +84,8 @@ class CommentAnalysisService
      */
     public function analyzeVideoComments($videoId, $limit = null)
     {
-        $query = YoutubeComment::where('youtube_video_id', $videoId)
+        $query = YoutubeComment::with('video.product')
+            ->where('youtube_video_id', $videoId)
             ->whereDoesntHave('analysis')
             ->whereRaw('LENGTH(text_original) > 20'); // Filtrar comentarios muy cortos
 
@@ -131,34 +132,35 @@ class CommentAnalysisService
     {
         $video = $comment->video;
         $contextInfo = '';
-        
-        // Agregar contexto de negocio si está disponible
-        if ($video && ($video->product_name || $video->target_audience || $video->research_goal)) {
+
+        // Agregar contexto de negocio desde el producto asociado
+        if ($video && $video->product) {
+            $product = $video->product;
             $contextInfo = "\n--- CONTEXTO DEL NEGOCIO ---\n";
-            
-            if ($video->product_name) {
-                $contextInfo .= "Producto/Servicio: {$video->product_name}\n";
+
+            if ($product->nombre) {
+                $contextInfo .= "Producto/Servicio: {$product->nombre}\n";
             }
-            
-            if ($video->product_description) {
-                $contextInfo .= "Descripción: {$video->product_description}\n";
+
+            if ($product->descripcion) {
+                $contextInfo .= "Descripción: {$product->descripcion}\n";
             }
-            
-            if ($video->target_audience) {
-                $contextInfo .= "Audiencia objetivo: {$video->target_audience}\n";
+
+            if ($product->audiencia_objetivo) {
+                $contextInfo .= "Audiencia objetivo: {$product->audiencia_objetivo}\n";
             }
-            
-            if ($video->research_goal) {
-                $contextInfo .= "Objetivo de investigación: {$video->research_goal}\n";
+
+            if ($product->puntos_dolor) {
+                $contextInfo .= "Puntos de dolor conocidos: {$product->puntos_dolor}\n";
             }
-            
-            if ($video->additional_context) {
-                $contextInfo .= "Contexto adicional: {$video->additional_context}\n";
+
+            if ($product->beneficios_clave) {
+                $contextInfo .= "Beneficios clave: {$product->beneficios_clave}\n";
             }
-            
+
             $contextInfo .= "--- FIN CONTEXTO ---\n\n";
         }
-        
+
         return $contextInfo .
                "Analiza el siguiente comentario de YouTube:\n\n" .
                "Autor: {$comment->author}\n" .
@@ -292,7 +294,7 @@ class CommentAnalysisService
     public function generateBuyerPersonas($videoId, $numPersonas = 4)
     {
         try {
-            $video = YoutubeVideo::findOrFail($videoId);
+            $video = YoutubeVideo::with('product')->findOrFail($videoId);
             
             // Obtener todos los análisis con sus comentarios
             $allAnalyses = YoutubeCommentAnalysis::where('youtube_video_id', $videoId)
@@ -481,9 +483,28 @@ class CommentAnalysisService
         $contextInfo = "Video: {$video->title}\n";
         $contextInfo .= "Canal: {$video->channel_title}\n";
         $contextInfo .= "Total comentarios analizados: " . count($analysisData) . "\n";
-        
-        if ($video->business_context) {
-            $contextInfo .= "Contexto: {$video->business_context}\n";
+
+        // Agregar contexto desde el producto asociado
+        if ($video->product) {
+            $product = $video->product;
+            $contextInfo .= "\nCONTEXTO DEL PRODUCTO:\n";
+            $contextInfo .= "Producto: {$product->nombre}\n";
+
+            if ($product->descripcion) {
+                $contextInfo .= "Descripción: {$product->descripcion}\n";
+            }
+
+            if ($product->audiencia_objetivo) {
+                $contextInfo .= "Audiencia objetivo: {$product->audiencia_objetivo}\n";
+            }
+
+            if ($product->puntos_dolor) {
+                $contextInfo .= "Puntos de dolor conocidos: {$product->puntos_dolor}\n";
+            }
+
+            if ($product->beneficios_clave) {
+                $contextInfo .= "Beneficios clave: {$product->beneficios_clave}\n";
+            }
         }
 
         // Crear resumen estadístico en lugar de enviar todo el JSON
