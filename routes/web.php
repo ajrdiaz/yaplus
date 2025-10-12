@@ -64,6 +64,10 @@ Route::middleware([
         Route::post('/', [\App\Http\Controllers\ProductController::class, 'store'])->name('store');
         Route::put('/{product}', [\App\Http\Controllers\ProductController::class, 'update'])->name('update');
         Route::delete('/{product}', [\App\Http\Controllers\ProductController::class, 'destroy'])->name('destroy');
+
+        // Consolidation Routes
+        Route::post('/{product}/consolidate', [\App\Http\Controllers\ProductController::class, 'consolidate'])->name('consolidate');
+        Route::get('/{product}/consolidation', [\App\Http\Controllers\ProductController::class, 'showConsolidation'])->name('consolidation.show');
     });
 });
 

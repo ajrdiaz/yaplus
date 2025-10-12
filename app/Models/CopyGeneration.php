@@ -12,6 +12,7 @@ class CopyGeneration extends Model
         'buyer_persona_type',
         'product_id',
         'copy_type',
+        'variations_count',
         'name',
         'headline',
         'subheadline',
@@ -45,6 +46,17 @@ class CopyGeneration extends Model
      * Tipos de copy disponibles
      */
     public static function getCopyTypes(): array
+    {
+        return [
+            'facebook_ad' => 'Anuncio Facebook/Instagram',
+            'landing_hero' => 'Hero de Landing Page',
+        ];
+    }
+
+    /**
+     * Todos los tipos de copy (incluyendo deshabilitados)
+     */
+    public static function getAllCopyTypes(): array
     {
         return [
             'facebook_ad' => 'Anuncio Facebook/Instagram',

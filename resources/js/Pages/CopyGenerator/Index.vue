@@ -11,16 +11,16 @@ import ProgressBar from 'primevue/progressbar';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Tag from 'primevue/tag';
+import TabView from 'primevue/tabview';
+import TabPanel from 'primevue/tabpanel';
 
 const props = defineProps({
-    buyerPersonas: Array,
     copyTypes: Object,
     recentCopies: Array,
     products: Array,
 });
 
 // Estado del formulario
-const selectedPersona = ref(null);
 const selectedProduct = ref(null);
 const selectedCopyType = ref(null);
 const customName = ref('');
@@ -28,22 +28,18 @@ const isGenerating = ref(false);
 const generatedCopy = ref(null);
 const errorMessage = ref('');
 
+// Campos específicos para Facebook Ads
+const facebookAdObjective = ref('');
+const facebookAdTone = ref('');
+const facebookAdAngle = ref('');
+
+// Buyer persona seleccionado de los top 5 (null = usar todos los datos consolidados)
+const selectedBuyerPersona = ref(null);
+
+// Número de variaciones a generar (1-3)
+const variationsCount = ref(1);
+
 // Opciones para los dropdowns
-const personaOptions = computed(() => {
-    if (!selectedProduct.value) {
-        return [];
-    }
-
-    // Filtrar buyer personas que pertenecen al producto seleccionado
-    return props.buyerPersonas
-        .filter(persona => persona.product_id === selectedProduct.value)
-        .map(persona => ({
-            label: `${persona.nombre} (${persona.source} - ${persona.source_name})`,
-            value: { id: persona.id, type: persona.type },
-            ...persona
-        }));
-});
-
 const copyTypeOptions = computed(() => {
     return Object.entries(props.copyTypes).map(([key, value]) => ({
         label: value,
@@ -51,16 +47,103 @@ const copyTypeOptions = computed(() => {
     }));
 });
 
-// Watcher para limpiar la selección de persona cuando cambie el producto
+// Producto seleccionado con sus datos
+const selectedProductData = computed(() => {
+    if (!selectedProduct.value) return null;
+    return props.products.find(p => p.id === selectedProduct.value);
+});
+
+// Top 5 buyer personas del producto seleccionado para el dropdown
+const buyerPersonaOptions = computed(() => {
+    if (!selectedProductData.value?.has_consolidated_data) return [];
+
+    const top5 = selectedProductData.value.top_5_buyer_personas || [];
+
+    // Agregar opción "Todos" al principio
+    const options = [
+        { label: 'Todos los Buyer Personas consolidados', value: null }
+    ];
+
+    // Agregar cada buyer persona del top 5
+    top5.forEach((persona, index) => {
+        options.push({
+            label: `${persona.nombre} (${persona.source_name})`,
+            value: index,
+            data: persona
+        });
+    });
+
+    return options;
+});
+
+// Opciones para objetivos de Facebook Ads
+const facebookObjectiveOptions = [
+    { label: 'Generar tráfico al sitio web', value: 'traffic' },
+    { label: 'Generar conversiones/ventas', value: 'conversions' },
+    { label: 'Generar leads/registros', value: 'leads' },
+    { label: 'Aumentar reconocimiento de marca', value: 'awareness' },
+    { label: 'Generar interacción (engagement)', value: 'engagement' },
+];
+
+// Opciones para tono de comunicación
+const toneOptions = [
+    { label: 'Profesional', value: 'professional' },
+    { label: 'Casual y amigable', value: 'casual' },
+    { label: 'Urgente y directo', value: 'urgent' },
+    { label: 'Inspiracional', value: 'inspirational' },
+    { label: 'Educativo', value: 'educational' },
+    { label: 'Emocional', value: 'emotional' },
+];
+
+// Opciones para número de variaciones
+const variationsOptions = [
+    { label: '1 variación', value: 1 },
+    { label: '2 variaciones', value: 2 },
+    { label: '3 variaciones', value: 3 },
+];
+
+// Watcher para establecer valores por defecto cuando cambie el tipo de copy
+watch(selectedCopyType, (newValue) => {
+    if (newValue === 'facebook_ad') {
+        // Establecer valores por defecto para Facebook Ads
+        if (!facebookAdObjective.value) {
+            facebookAdObjective.value = 'conversions';
+        }
+        if (!facebookAdTone.value) {
+            facebookAdTone.value = 'emotional';
+        }
+    } else {
+        // Limpiar campos si no es Facebook Ad
+        facebookAdObjective.value = '';
+        facebookAdTone.value = '';
+        facebookAdAngle.value = '';
+    }
+});
+
+// Watcher para resetear el buyer persona cuando cambie el producto
 watch(selectedProduct, () => {
-    selectedPersona.value = null;
+    selectedBuyerPersona.value = null;
 });
 
 // Generar copy
 const generateCopy = async () => {
-    if (!selectedPersona.value || !selectedProduct.value || !selectedCopyType.value) {
-        errorMessage.value = 'Por favor selecciona un Buyer Persona, un Producto y un tipo de copy';
+    if (!selectedProduct.value || !selectedCopyType.value) {
+        errorMessage.value = 'Por favor selecciona un Producto y un tipo de copy';
         return;
+    }
+
+    // Verificar que el producto tenga datos consolidados
+    if (!selectedProductData.value?.has_consolidated_data) {
+        errorMessage.value = 'Este producto no tiene datos consolidados. Por favor, ve a la sección de Productos y consolida los datos primero.';
+        return;
+    }
+
+    // Validar campos específicos de Facebook Ads
+    if (selectedCopyType.value === 'facebook_ad') {
+        if (!facebookAdObjective.value || !facebookAdTone.value || !facebookAdAngle.value) {
+            errorMessage.value = 'Por favor completa todos los campos requeridos para el anuncio de Facebook';
+            return;
+        }
     }
 
     isGenerating.value = true;
@@ -68,17 +151,26 @@ const generateCopy = async () => {
     generatedCopy.value = null;
 
     try {
-        const response = await axios.post(route('copy.generate'), {
-            buyer_persona_id: selectedPersona.value.id,
-            buyer_persona_type: selectedPersona.value.type,
+        const payload = {
             product_id: selectedProduct.value,
             copy_type: selectedCopyType.value,
             custom_name: customName.value || null,
-        });
+            selected_buyer_persona_index: selectedBuyerPersona.value,
+            variations_count: variationsCount.value,
+        };
+
+        // Agregar campos específicos de Facebook si aplica
+        if (selectedCopyType.value === 'facebook_ad') {
+            payload.facebook_ad_objective = facebookAdObjective.value;
+            payload.facebook_ad_tone = facebookAdTone.value;
+            payload.facebook_ad_angle = facebookAdAngle.value;
+        }
+
+        const response = await axios.post(route('copy.generate'), payload);
 
         if (response.data.success) {
             generatedCopy.value = response.data.copy;
-            
+
             // Recargar la página para actualizar los copies recientes
             setTimeout(() => {
                 router.reload({ only: ['recentCopies'] });
@@ -103,6 +195,25 @@ const resetForm = () => {
     generatedCopy.value = null;
     customName.value = '';
     errorMessage.value = '';
+    facebookAdObjective.value = '';
+    facebookAdTone.value = '';
+    facebookAdAngle.value = '';
+    selectedBuyerPersona.value = null;
+    variationsCount.value = 1;
+};
+
+// Ver detalles de un copy
+const viewCopy = async (copyId) => {
+    try {
+        const response = await axios.get(route('copy.show', copyId));
+        if (response.data.copy) {
+            generatedCopy.value = response.data.copy;
+            // Scroll hacia el resultado
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    } catch (error) {
+        console.error('Error al cargar el copy:', error);
+    }
 };
 
 // Eliminar copy
@@ -145,9 +256,8 @@ const getCopyIcon = (copyType) => {
                 </p>
             </div>
 
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- Panel de Generación -->
-                <div class="lg:col-span-2">
+            <!-- Panel de Generación -->
+            <div>
                     <Card>
                         <template #title>
                             <div class="flex items-center gap-2">
@@ -180,55 +290,59 @@ const getCopyIcon = (copyType) => {
                                             <span v-else>{{ slotProps.placeholder }}</span>
                                         </template>
                                         <template #option="slotProps">
-                                            <span class="font-semibold">{{ slotProps.option.nombre }}</span>
-                                        </template>
-                                    </Dropdown>
-                                </div>
-
-                                <!-- Selector de Buyer Persona -->
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                                        Buyer Persona *
-                                    </label>
-                                    <Dropdown
-                                        v-model="selectedPersona"
-                                        :options="personaOptions"
-                                        optionLabel="label"
-                                        :placeholder="!selectedProduct ? 'Primero selecciona un producto' : 'Selecciona un Buyer Persona'"
-                                        class="w-full"
-                                        :disabled="isGenerating || !selectedProduct"
-                                        filter
-                                    >
-                                        <template #value="slotProps">
-                                            <div v-if="slotProps.value" class="flex items-center gap-2">
-                                                <Tag :value="slotProps.value.source" severity="info" />
-                                                <span>{{ slotProps.value.nombre }}</span>
-                                            </div>
-                                            <span v-else>{{ slotProps.placeholder }}</span>
-                                        </template>
-                                        <template #option="slotProps">
                                             <div class="flex flex-col">
                                                 <div class="flex items-center gap-2">
-                                                    <Tag :value="slotProps.option.source" :severity="slotProps.option.source === 'YouTube' ? 'danger' : 'success'" />
                                                     <span class="font-semibold">{{ slotProps.option.nombre }}</span>
+                                                    <Tag
+                                                        v-if="slotProps.option.has_consolidated_data"
+                                                        value="Consolidado"
+                                                        severity="success"
+                                                        size="small"
+                                                    />
+                                                    <Tag
+                                                        v-else
+                                                        value="Sin consolidar"
+                                                        severity="warning"
+                                                        size="small"
+                                                    />
                                                 </div>
-                                                <span class="text-sm text-gray-500">
-                                                    {{ slotProps.option.source_name }} - {{ slotProps.option.edad }}
+                                                <span v-if="slotProps.option.has_consolidated_data" class="text-xs text-gray-500 mt-1">
+                                                    {{ slotProps.option.total_buyer_personas }} buyer personas consolidados
+                                                    <span v-if="slotProps.option.ultima_consolidacion">
+                                                        · {{ slotProps.option.ultima_consolidacion }}
+                                                    </span>
+                                                </span>
+                                                <span v-else class="text-xs text-orange-600 mt-1">
+                                                    <i class="pi pi-exclamation-triangle"></i>
+                                                    Requiere consolidación de datos
                                                 </span>
                                             </div>
                                         </template>
-                                        <template #empty>
-                                            <div class="p-3 text-center text-gray-500">
-                                                <i class="pi pi-info-circle mb-2"></i>
-                                                <p v-if="!selectedProduct">Selecciona un producto primero</p>
-                                                <p v-else>No hay Buyer Personas para este producto</p>
-                                            </div>
-                                        </template>
                                     </Dropdown>
-                                    <small v-if="selectedProduct && personaOptions.length === 0" class="text-orange-600">
-                                        <i class="pi pi-exclamation-triangle text-xs"></i>
-                                        No hay Buyer Personas creados para este producto. Debes analizar videos de YouTube o formularios de Google Forms primero.
-                                    </small>
+
+                                    <!-- Advertencia si el producto no tiene datos consolidados -->
+                                    <div v-if="selectedProductData && !selectedProductData.has_consolidated_data" class="mt-2">
+                                        <Message severity="warn" :closable="false">
+                                            <div class="flex flex-col gap-2">
+                                                <p class="font-medium">Este producto no tiene datos consolidados</p>
+                                                <p class="text-sm">Ve a la sección de Productos y haz clic en "Consolidar Datos" para procesar los buyer personas asociados.</p>
+                                            </div>
+                                        </Message>
+                                    </div>
+
+                                    <!-- Info del producto si tiene datos consolidados -->
+                                    <div v-if="selectedProductData && selectedProductData.has_consolidated_data" class="mt-2 p-3 bg-green-50 rounded-lg border border-green-200">
+                                        <div class="flex items-center gap-2 text-sm text-green-800">
+                                            <i class="pi pi-check-circle"></i>
+                                            <span class="font-medium">Producto listo para generar copy</span>
+                                        </div>
+                                        <p class="text-xs text-green-700 mt-1">
+                                            {{ selectedProductData.total_buyer_personas }} buyer personas consolidados
+                                            <span v-if="selectedProductData.ultima_consolidacion">
+                                                · Última consolidación: {{ selectedProductData.ultima_consolidacion }}
+                                            </span>
+                                        </p>
+                                    </div>
                                 </div>
 
                                 <!-- Selector de Tipo de Copy -->
@@ -245,6 +359,137 @@ const getCopyIcon = (copyType) => {
                                         class="w-full"
                                         :disabled="isGenerating"
                                     />
+                                </div>
+
+                                <!-- Selector de Buyer Persona -->
+                                <div v-if="selectedProductData?.has_consolidated_data && buyerPersonaOptions.length > 1">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Buyer Persona
+                                    </label>
+                                    <Dropdown
+                                        v-model="selectedBuyerPersona"
+                                        :options="buyerPersonaOptions"
+                                        optionLabel="label"
+                                        optionValue="value"
+                                        placeholder="Selecciona un buyer persona"
+                                        class="w-full"
+                                        :disabled="isGenerating"
+                                    >
+                                        <template #value="slotProps">
+                                            <div v-if="slotProps.value === null">
+                                                <i class="pi pi-users text-primary mr-2"></i>
+                                                <span>Todos los Buyer Personas consolidados</span>
+                                            </div>
+                                            <div v-else class="flex items-center gap-2">
+                                                <i class="pi pi-user text-primary"></i>
+                                                <span>{{ buyerPersonaOptions.find(o => o.value === slotProps.value)?.label }}</span>
+                                            </div>
+                                        </template>
+                                        <template #option="slotProps">
+                                            <div class="flex flex-col">
+                                                <div class="flex items-center gap-2">
+                                                    <i :class="slotProps.option.value === null ? 'pi pi-users' : 'pi pi-user'" class="text-primary"></i>
+                                                    <span :class="{ 'font-semibold': slotProps.option.value === null }">
+                                                        {{ slotProps.option.label }}
+                                                    </span>
+                                                </div>
+                                                <span v-if="slotProps.option.value === null" class="text-xs text-gray-500 mt-1 ml-6">
+                                                    Usar datos consolidados de todos ({{ selectedProductData.total_buyer_personas }} buyer personas)
+                                                </span>
+                                                <div v-else class="text-xs text-gray-500 mt-1 ml-6">
+                                                    <div v-if="slotProps.option.data">
+                                                        {{ slotProps.option.data.edad }} · {{ slotProps.option.data.ocupacion }}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </Dropdown>
+                                    <small class="text-gray-500 text-xs mt-1 block">
+                                        Selecciona uno de los 5 mejores Buyer Personas o usa todos los datos consolidados
+                                    </small>
+                                </div>
+
+                                <!-- Selector de Número de Variaciones -->
+                                <div v-if="selectedCopyType === 'facebook_ad' || selectedCopyType === 'landing_hero'">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                                        Número de Variaciones
+                                    </label>
+                                    <Dropdown
+                                        v-model="variationsCount"
+                                        :options="variationsOptions"
+                                        optionLabel="label"
+                                        optionValue="value"
+                                        placeholder="Selecciona cuántas variaciones generar"
+                                        class="w-full"
+                                        :disabled="isGenerating"
+                                    >
+                                        <template #value="slotProps">
+                                            <div class="flex items-center gap-2">
+                                                <i class="pi pi-clone text-primary"></i>
+                                                <span>{{ variationsOptions.find(o => o.value === slotProps.value)?.label }}</span>
+                                            </div>
+                                        </template>
+                                    </Dropdown>
+                                    <small class="text-gray-500 text-xs mt-1 block">
+                                        La IA generará múltiples variaciones del mismo copy para que puedas A/B testear
+                                    </small>
+                                </div>
+
+                                <!-- Campos específicos para Facebook Ads -->
+                                <div v-if="selectedCopyType === 'facebook_ad'" class="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <i class="pi pi-facebook text-blue-600"></i>
+                                        <span class="text-sm font-semibold text-blue-900">Configuración del Anuncio de Facebook/Instagram</span>
+                                    </div>
+
+                                    <!-- Objetivo específico -->
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                                            Objetivo específico del anuncio *
+                                        </label>
+                                        <Dropdown
+                                            v-model="facebookAdObjective"
+                                            :options="facebookObjectiveOptions"
+                                            optionLabel="label"
+                                            optionValue="value"
+                                            placeholder="¿Qué quieres lograr con este anuncio?"
+                                            class="w-full"
+                                            :disabled="isGenerating"
+                                        />
+                                    </div>
+
+                                    <!-- Tono de comunicación -->
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                                            Tono de la comunicación *
+                                        </label>
+                                        <Dropdown
+                                            v-model="facebookAdTone"
+                                            :options="toneOptions"
+                                            optionLabel="label"
+                                            optionValue="value"
+                                            placeholder="¿Cómo quieres comunicarte con tu audiencia?"
+                                            class="w-full"
+                                            :disabled="isGenerating"
+                                        />
+                                    </div>
+
+                                    <!-- Ángulo de venta -->
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                                            Ángulo de venta principal a trabajar *
+                                        </label>
+                                        <Textarea
+                                            v-model="facebookAdAngle"
+                                            placeholder="Ej: Ahorro de tiempo, Resultados garantizados, Precio especial por tiempo limitado, etc."
+                                            rows="3"
+                                            class="w-full"
+                                            :disabled="isGenerating"
+                                        />
+                                        <small class="text-gray-500 text-xs">
+                                            Describe el beneficio o ventaja principal que quieres destacar en el anuncio
+                                        </small>
+                                    </div>
                                 </div>
 
                                 <!-- Nombre personalizado (opcional) -->
@@ -266,13 +511,13 @@ const getCopyIcon = (copyType) => {
                                 </Message>
 
                                 <!-- Botón de generar -->
-                                <div class="flex gap-2">
+                                <div class="flex gap-2 mt-3">
                                     <Button
                                         label="Generar Copy con IA"
                                         icon="pi pi-sparkles"
                                         @click="generateCopy"
                                         :loading="isGenerating"
-                                        :disabled="!selectedPersona || !selectedProduct || !selectedCopyType"
+                                        :disabled="!selectedProduct || !selectedCopyType || !selectedProductData?.has_consolidated_data"
                                         class="flex-1"
                                         severity="success"
                                     />
@@ -312,71 +557,311 @@ const getCopyIcon = (copyType) => {
                         </template>
                         <template #content>
                             <div class="space-y-4">
-                                <!-- Headline -->
-                                <div v-if="generatedCopy.headline">
-                                    <div class="flex items-center justify-between mb-2">
-                                        <label class="text-sm font-semibold text-gray-700">TITULAR</label>
-                                        <Button
-                                            icon="pi pi-copy"
-                                            text
-                                            rounded
-                                            @click="copyToClipboard(generatedCopy.headline)"
-                                            v-tooltip.top="'Copiar'"
-                                        />
+                                <!-- Formato específico para Facebook Ads -->
+                                <div v-if="generatedCopy.copy_type === 'facebook_ad' && generatedCopy.additional_data">
+                                    <!-- Si hay variaciones múltiples, mostrar en tabs -->
+                                    <div v-if="generatedCopy.additional_data.variations && generatedCopy.additional_data.variations.length > 1">
+                                        <div class="mb-3 flex items-center gap-2 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                                            <i class="pi pi-clone text-purple-600"></i>
+                                            <span class="font-semibold text-purple-900">{{ generatedCopy.additional_data.variations.length }} Variaciones Generadas para A/B Testing</span>
+                                        </div>
+
+                                        <TabView>
+                                            <TabPanel v-for="(variation, index) in generatedCopy.additional_data.variations" :key="index" :header="`Variación ${index + 1}`">
+                                                <div class="space-y-4">
+                                                    <!-- Texto Principal Corto -->
+                                                    <div v-if="variation.texto_corto">
+                                                        <div class="flex items-center justify-between mb-2">
+                                                            <label class="text-sm font-semibold text-gray-700">
+                                                                📝 TEXTO PRINCIPAL (VERSIÓN CORTA)
+                                                                <span class="text-xs text-gray-500 ml-2">({{ variation.texto_corto.length }}/125 caracteres)</span>
+                                                            </label>
+                                                            <Button icon="pi pi-copy" text rounded @click="copyToClipboard(variation.texto_corto)" v-tooltip.top="'Copiar'" />
+                                                        </div>
+                                                        <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                                            <p class="font-medium">{{ variation.texto_corto }}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- Texto Principal Largo -->
+                                                    <div v-if="variation.texto_largo">
+                                                        <div class="flex items-center justify-between mb-2">
+                                                            <label class="text-sm font-semibold text-gray-700">
+                                                                📄 TEXTO PRINCIPAL (VERSIÓN LARGA)
+                                                                <span class="text-xs text-gray-500 ml-2">({{ variation.texto_largo.length }}/400-700 caracteres)</span>
+                                                            </label>
+                                                            <Button icon="pi pi-copy" text rounded @click="copyToClipboard(variation.texto_largo)" v-tooltip.top="'Copiar'" />
+                                                        </div>
+                                                        <div class="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                                                            <p class="whitespace-pre-wrap">{{ variation.texto_largo }}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- Titular Corto -->
+                                                    <div v-if="variation.titular_corto">
+                                                        <div class="flex items-center justify-between mb-2">
+                                                            <label class="text-sm font-semibold text-gray-700">
+                                                                🎯 TITULAR (VERSIÓN CORTA)
+                                                                <span class="text-xs text-gray-500 ml-2">({{ variation.titular_corto.length }}/27 caracteres)</span>
+                                                            </label>
+                                                            <Button icon="pi pi-copy" text rounded @click="copyToClipboard(variation.titular_corto)" v-tooltip.top="'Copiar'" />
+                                                        </div>
+                                                        <div class="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                                                            <p class="font-bold text-lg">{{ variation.titular_corto }}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- Titular Largo -->
+                                                    <div v-if="variation.titular_largo">
+                                                        <div class="flex items-center justify-between mb-2">
+                                                            <label class="text-sm font-semibold text-gray-700">
+                                                                🎯 TITULAR (VERSIÓN LARGA)
+                                                                <span class="text-xs text-gray-500 ml-2">({{ variation.titular_largo.length }}/60 caracteres)</span>
+                                                            </label>
+                                                            <Button icon="pi pi-copy" text rounded @click="copyToClipboard(variation.titular_largo)" v-tooltip.top="'Copiar'" />
+                                                        </div>
+                                                        <div class="p-3 bg-orange-50 rounded-lg border border-orange-200">
+                                                            <p class="font-semibold text-base">{{ variation.titular_largo }}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- Descripción del Titular -->
+                                                    <div v-if="variation.descripcion">
+                                                        <div class="flex items-center justify-between mb-2">
+                                                            <label class="text-sm font-semibold text-gray-700">
+                                                                💬 DESCRIPCIÓN DEL TITULAR
+                                                                <span class="text-xs text-gray-500 ml-2">({{ variation.descripcion.length }}/60 caracteres)</span>
+                                                            </label>
+                                                            <Button icon="pi pi-copy" text rounded @click="copyToClipboard(variation.descripcion)" v-tooltip.top="'Copiar'" />
+                                                        </div>
+                                                        <div class="p-3 bg-green-50 rounded-lg border border-green-200">
+                                                            <p class="font-medium text-green-800">{{ variation.descripcion }}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </TabPanel>
+                                        </TabView>
                                     </div>
-                                    <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                                        <p class="font-semibold text-lg">{{ generatedCopy.headline }}</p>
+
+                                    <!-- Variación única (formato anterior) -->
+                                    <div v-else>
+                                        <!-- Texto Principal Corto -->
+                                        <div v-if="generatedCopy.additional_data.texto_corto">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <label class="text-sm font-semibold text-gray-700">
+                                                    📝 TEXTO PRINCIPAL (VERSIÓN CORTA)
+                                                    <span class="text-xs text-gray-500 ml-2">({{ generatedCopy.additional_data.texto_corto.length }}/125 caracteres)</span>
+                                                </label>
+                                                <Button icon="pi pi-copy" text rounded @click="copyToClipboard(generatedCopy.additional_data.texto_corto)" v-tooltip.top="'Copiar'" />
+                                            </div>
+                                            <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                                <p class="font-medium">{{ generatedCopy.additional_data.texto_corto }}</p>
+                                            </div>
+                                        </div>
+
+                                        <!-- Texto Principal Largo -->
+                                        <div v-if="generatedCopy.additional_data.texto_largo">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <label class="text-sm font-semibold text-gray-700">
+                                                    📄 TEXTO PRINCIPAL (VERSIÓN LARGA)
+                                                    <span class="text-xs text-gray-500 ml-2">({{ generatedCopy.additional_data.texto_largo.length }}/400-700 caracteres)</span>
+                                                </label>
+                                                <Button icon="pi pi-copy" text rounded @click="copyToClipboard(generatedCopy.additional_data.texto_largo)" v-tooltip.top="'Copiar'" />
+                                            </div>
+                                            <div class="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                                                <p class="whitespace-pre-wrap">{{ generatedCopy.additional_data.texto_largo }}</p>
+                                            </div>
+                                        </div>
+
+                                        <!-- Titular Corto -->
+                                        <div v-if="generatedCopy.additional_data.titular_corto">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <label class="text-sm font-semibold text-gray-700">
+                                                    🎯 TITULAR (VERSIÓN CORTA)
+                                                    <span class="text-xs text-gray-500 ml-2">({{ generatedCopy.additional_data.titular_corto.length }}/27 caracteres)</span>
+                                                </label>
+                                                <Button icon="pi pi-copy" text rounded @click="copyToClipboard(generatedCopy.additional_data.titular_corto)" v-tooltip.top="'Copiar'" />
+                                            </div>
+                                            <div class="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                                                <p class="font-bold text-lg">{{ generatedCopy.additional_data.titular_corto }}</p>
+                                            </div>
+                                        </div>
+
+                                        <!-- Titular Largo -->
+                                        <div v-if="generatedCopy.additional_data.titular_largo">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <label class="text-sm font-semibold text-gray-700">
+                                                    🎯 TITULAR (VERSIÓN LARGA)
+                                                    <span class="text-xs text-gray-500 ml-2">({{ generatedCopy.additional_data.titular_largo.length }}/60 caracteres)</span>
+                                                </label>
+                                                <Button icon="pi pi-copy" text rounded @click="copyToClipboard(generatedCopy.additional_data.titular_largo)" v-tooltip.top="'Copiar'" />
+                                            </div>
+                                            <div class="p-3 bg-orange-50 rounded-lg border border-orange-200">
+                                                <p class="font-semibold text-base">{{ generatedCopy.additional_data.titular_largo }}</p>
+                                            </div>
+                                        </div>
+
+                                        <!-- Descripción del Titular -->
+                                        <div v-if="generatedCopy.additional_data.descripcion">
+                                            <div class="flex items-center justify-between mb-2">
+                                                <label class="text-sm font-semibold text-gray-700">
+                                                    💬 DESCRIPCIÓN DEL TITULAR
+                                                    <span class="text-xs text-gray-500 ml-2">({{ generatedCopy.additional_data.descripcion.length }}/60 caracteres)</span>
+                                                </label>
+                                                <Button icon="pi pi-copy" text rounded @click="copyToClipboard(generatedCopy.additional_data.descripcion)" v-tooltip.top="'Copiar'" />
+                                            </div>
+                                            <div class="p-3 bg-green-50 rounded-lg border border-green-200">
+                                                <p class="font-medium text-green-800">{{ generatedCopy.additional_data.descripcion }}</p>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
-                                <!-- Subheadline -->
-                                <div v-if="generatedCopy.subheadline">
-                                    <div class="flex items-center justify-between mb-2">
-                                        <label class="text-sm font-semibold text-gray-700">SUBTÍTULO</label>
-                                        <Button
-                                            icon="pi pi-copy"
-                                            text
-                                            rounded
-                                            @click="copyToClipboard(generatedCopy.subheadline)"
-                                            v-tooltip.top="'Copiar'"
-                                        />
+                                <!-- Formato específico para Landing Hero -->
+                                <div v-else-if="generatedCopy.copy_type === 'landing_hero' && generatedCopy.additional_data">
+                                    <!-- Si hay variaciones múltiples, mostrar en tabs -->
+                                    <div v-if="generatedCopy.additional_data.variations && generatedCopy.additional_data.variations.length > 1">
+                                        <div class="mb-3 flex items-center gap-2 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                                            <i class="pi pi-clone text-purple-600"></i>
+                                            <span class="font-semibold text-purple-900">{{ generatedCopy.additional_data.variations.length }} Variaciones Generadas para A/B Testing</span>
+                                        </div>
+
+                                        <TabView>
+                                            <TabPanel v-for="(variation, index) in generatedCopy.additional_data.variations" :key="index" :header="`Variación ${index + 1}`">
+                                                <div class="space-y-4">
+                                                    <!-- H1 -->
+                                                    <div v-if="variation.h1">
+                                                        <div class="flex items-center justify-between mb-2">
+                                                            <label class="text-sm font-semibold text-gray-700">🎯 TITULAR PRINCIPAL (H1)</label>
+                                                            <Button icon="pi pi-copy" text rounded @click="copyToClipboard(variation.h1)" v-tooltip.top="'Copiar'" />
+                                                        </div>
+                                                        <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                                            <p class="font-bold text-2xl">{{ variation.h1 }}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- H2 -->
+                                                    <div v-if="variation.h2">
+                                                        <div class="flex items-center justify-between mb-2">
+                                                            <label class="text-sm font-semibold text-gray-700">💬 SUBTÍTULO (H2)</label>
+                                                            <Button icon="pi pi-copy" text rounded @click="copyToClipboard(variation.h2)" v-tooltip.top="'Copiar'" />
+                                                        </div>
+                                                        <div class="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                                                            <p class="font-semibold text-lg">{{ variation.h2 }}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- Benefits -->
+                                                    <div v-if="variation.benefits && variation.benefits.length > 0">
+                                                        <label class="text-sm font-semibold text-gray-700 mb-2 block">✅ BENEFICIOS CLAVE</label>
+                                                        <ul class="space-y-2">
+                                                            <li v-for="(benefit, idx) in variation.benefits" :key="idx" class="flex items-start gap-2 p-2 bg-green-50 rounded-lg border border-green-200">
+                                                                <i class="pi pi-check-circle text-green-600 mt-1"></i>
+                                                                <span>{{ benefit }}</span>
+                                                            </li>
+                                                        </ul>
+                                                    </div>
+
+                                                    <!-- CTAs -->
+                                                    <div class="flex gap-2">
+                                                        <div v-if="variation.cta_primary" class="flex-1">
+                                                            <div class="flex items-center justify-between mb-2">
+                                                                <label class="text-sm font-semibold text-gray-700">🔘 CTA PRINCIPAL</label>
+                                                                <Button icon="pi pi-copy" text rounded @click="copyToClipboard(variation.cta_primary)" v-tooltip.top="'Copiar'" />
+                                                            </div>
+                                                            <div class="p-3 bg-green-100 rounded-lg border border-green-300">
+                                                                <p class="font-bold text-green-800">{{ variation.cta_primary }}</p>
+                                                            </div>
+                                                        </div>
+                                                        <div v-if="variation.cta_secondary" class="flex-1">
+                                                            <div class="flex items-center justify-between mb-2">
+                                                                <label class="text-sm font-semibold text-gray-700">🔘 CTA SECUNDARIO</label>
+                                                                <Button icon="pi pi-copy" text rounded @click="copyToClipboard(variation.cta_secondary)" v-tooltip.top="'Copiar'" />
+                                                            </div>
+                                                            <div class="p-3 bg-gray-100 rounded-lg border border-gray-300">
+                                                                <p class="font-semibold text-gray-700">{{ variation.cta_secondary }}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </TabPanel>
+                                        </TabView>
                                     </div>
-                                    <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                        <p>{{ generatedCopy.subheadline }}</p>
+
+                                    <!-- Variación única para Landing Hero (formato anterior) -->
+                                    <div v-else>
+                                        <!-- Use generic format below -->
                                     </div>
                                 </div>
 
-                                <!-- Body -->
-                                <div v-if="generatedCopy.body">
-                                    <div class="flex items-center justify-between mb-2">
-                                        <label class="text-sm font-semibold text-gray-700">TEXTO</label>
-                                        <Button
-                                            icon="pi pi-copy"
-                                            text
-                                            rounded
-                                            @click="copyToClipboard(generatedCopy.body)"
-                                            v-tooltip.top="'Copiar'"
-                                        />
+                                <!-- Formato genérico para otros tipos de copy -->
+                                <div v-else>
+                                    <!-- Headline -->
+                                    <div v-if="generatedCopy.headline">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <label class="text-sm font-semibold text-gray-700">TITULAR</label>
+                                            <Button
+                                                icon="pi pi-copy"
+                                                text
+                                                rounded
+                                                @click="copyToClipboard(generatedCopy.headline)"
+                                                v-tooltip.top="'Copiar'"
+                                            />
+                                        </div>
+                                        <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                            <p class="font-semibold text-lg">{{ generatedCopy.headline }}</p>
+                                        </div>
                                     </div>
-                                    <div class="p-3 bg-white rounded-lg border border-gray-300">
-                                        <p class="whitespace-pre-wrap">{{ generatedCopy.body }}</p>
-                                    </div>
-                                </div>
 
-                                <!-- CTA -->
-                                <div v-if="generatedCopy.cta">
-                                    <div class="flex items-center justify-between mb-2">
-                                        <label class="text-sm font-semibold text-gray-700">CALL TO ACTION</label>
-                                        <Button
-                                            icon="pi pi-copy"
-                                            text
-                                            rounded
-                                            @click="copyToClipboard(generatedCopy.cta)"
-                                            v-tooltip.top="'Copiar'"
-                                        />
+                                    <!-- Subheadline -->
+                                    <div v-if="generatedCopy.subheadline">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <label class="text-sm font-semibold text-gray-700">SUBTÍTULO</label>
+                                            <Button
+                                                icon="pi pi-copy"
+                                                text
+                                                rounded
+                                                @click="copyToClipboard(generatedCopy.subheadline)"
+                                                v-tooltip.top="'Copiar'"
+                                            />
+                                        </div>
+                                        <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                            <p>{{ generatedCopy.subheadline }}</p>
+                                        </div>
                                     </div>
-                                    <div class="p-3 bg-green-50 rounded-lg border border-green-200">
-                                        <p class="font-semibold text-green-700">{{ generatedCopy.cta }}</p>
+
+                                    <!-- Body -->
+                                    <div v-if="generatedCopy.body">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <label class="text-sm font-semibold text-gray-700">TEXTO</label>
+                                            <Button
+                                                icon="pi pi-copy"
+                                                text
+                                                rounded
+                                                @click="copyToClipboard(generatedCopy.body)"
+                                                v-tooltip.top="'Copiar'"
+                                            />
+                                        </div>
+                                        <div class="p-3 bg-white rounded-lg border border-gray-300">
+                                            <p class="whitespace-pre-wrap">{{ generatedCopy.body }}</p>
+                                        </div>
+                                    </div>
+
+                                    <!-- CTA -->
+                                    <div v-if="generatedCopy.cta">
+                                        <div class="flex items-center justify-between mb-2">
+                                            <label class="text-sm font-semibold text-gray-700">CALL TO ACTION</label>
+                                            <Button
+                                                icon="pi pi-copy"
+                                                text
+                                                rounded
+                                                @click="copyToClipboard(generatedCopy.cta)"
+                                                v-tooltip.top="'Copiar'"
+                                            />
+                                        </div>
+                                        <div class="p-3 bg-green-50 rounded-lg border border-green-200">
+                                            <p class="font-semibold text-green-700">{{ generatedCopy.cta }}</p>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -424,74 +909,91 @@ const getCopyIcon = (copyType) => {
                             </div>
                         </template>
                     </Card>
-                </div>
+            </div>
 
-                <!-- Panel Lateral: Copies Recientes -->
-                <div class="lg:col-span-1">
-                    <Card>
-                        <template #title>
-                            <div class="flex items-center gap-2">
-                                <i class="pi pi-history text-gray-600"></i>
-                                Copies Recientes
-                            </div>
-                        </template>
-                        <template #content>
-                            <div v-if="recentCopies.length === 0" class="text-center py-8 text-gray-500">
-                                <i class="pi pi-inbox text-4xl mb-2"></i>
-                                <p>No hay copies generados aún</p>
-                            </div>
-                            <div v-else class="space-y-3">
-                                <div
-                                    v-for="copy in recentCopies"
-                                    :key="copy.id"
-                                    class="p-3 border rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
-                                >
-                                    <div class="flex items-start justify-between gap-2">
-                                        <div class="flex-1 min-w-0">
-                                            <div class="flex items-center gap-2 mb-1">
-                                                <i :class="getCopyIcon(copy.copy_type)" class="text-sm"></i>
-                                                <span class="text-xs font-medium text-gray-500">{{ copy.copy_type_name }}</span>
-                                            </div>
-                                            <p class="text-sm font-semibold text-gray-800 truncate" v-tooltip.top="copy.headline">
-                                                {{ copy.headline || copy.name }}
-                                            </p>
-                                            <p class="text-xs text-gray-500 mt-1">{{ copy.created_at }}</p>
-                                        </div>
+            <!-- Historial de Copies - DataTable completo abajo -->
+            <div class="mt-6">
+                <Card>
+                    <template #title>
+                        <div class="flex items-center gap-2">
+                            <i class="pi pi-history text-gray-600"></i>
+                            Historial de Copies
+                        </div>
+                    </template>
+                    <template #content>
+                        <DataTable
+                            :value="recentCopies"
+                            paginator
+                            :rows="10"
+                            :rowsPerPageOptions="[5, 10, 20, 50]"
+                            tableStyle="min-width: 50rem"
+                            :emptyMessage="'No hay copies generados aún'"
+                            sortField="created_at"
+                            :sortOrder="-1"
+                            stripedRows
+                        >
+                            <Column field="copy_type" header="Tipo" sortable style="width: 15%">
+                                <template #body="slotProps">
+                                    <div class="flex items-center gap-2">
+                                        <i :class="getCopyIcon(slotProps.data.copy_type)"></i>
+                                        <span class="text-sm">{{ slotProps.data.copy_type_name }}</span>
+                                    </div>
+                                </template>
+                            </Column>
+
+                            <Column field="name" header="Nombre" sortable style="width: 20%">
+                                <template #body="slotProps">
+                                    <span class="font-medium">{{ slotProps.data.name }}</span>
+                                </template>
+                            </Column>
+
+                            <Column field="headline" header="Titular" sortable style="width: 35%">
+                                <template #body="slotProps">
+                                    <p class="text-sm text-gray-700 truncate max-w-md" v-tooltip.top="slotProps.data.headline">
+                                        {{ slotProps.data.headline }}
+                                    </p>
+                                </template>
+                            </Column>
+
+                            <Column field="character_count" header="Caracteres" sortable style="width: 10%; text-align: center">
+                                <template #body="slotProps">
+                                    <Tag :value="slotProps.data.character_count" severity="info" />
+                                </template>
+                            </Column>
+
+                            <Column field="created_at" header="Fecha" sortable style="width: 12%">
+                                <template #body="slotProps">
+                                    <span class="text-sm text-gray-600">{{ slotProps.data.created_at }}</span>
+                                </template>
+                            </Column>
+
+                            <Column header="Acciones" style="width: 8%; text-align: center">
+                                <template #body="slotProps">
+                                    <div class="flex items-center justify-center gap-1">
+                                        <Button
+                                            icon="pi pi-eye"
+                                            text
+                                            rounded
+                                            size="small"
+                                            severity="info"
+                                            @click="viewCopy(slotProps.data.id)"
+                                            v-tooltip.top="'Ver detalles'"
+                                        />
                                         <Button
                                             icon="pi pi-trash"
                                             text
                                             rounded
                                             size="small"
                                             severity="danger"
-                                            @click.stop="deleteCopy(copy.id)"
+                                            @click="deleteCopy(slotProps.data.id)"
+                                            v-tooltip.top="'Eliminar'"
                                         />
                                     </div>
-                                </div>
-                            </div>
-                        </template>
-                    </Card>
-
-                    <!-- Guía rápida -->
-                    <Card class="mt-4">
-                        <template #title>
-                            <div class="flex items-center gap-2">
-                                <i class="pi pi-info-circle text-blue-600"></i>
-                                Guía Rápida
-                            </div>
-                        </template>
-                        <template #content>
-                            <div class="text-sm space-y-2 text-gray-600">
-                                <p><strong>1.</strong> Selecciona un Buyer Persona (de YouTube o Google Forms)</p>
-                                <p><strong>2.</strong> Elige el tipo de copy que necesitas</p>
-                                <p><strong>3.</strong> La IA generará un texto personalizado basado en los datos del buyer</p>
-                                <p><strong>4.</strong> Copia y usa el texto en tus campañas</p>
-                                <p class="pt-2 border-t mt-3 text-xs">
-                                    💡 <strong>Tip:</strong> Puedes regenerar el copy cuantas veces quieras para obtener diferentes variaciones
-                                </p>
-                            </div>
-                        </template>
-                    </Card>
-                </div>
+                                </template>
+                            </Column>
+                        </DataTable>
+                    </template>
+                </Card>
             </div>
     </div>
 </template>

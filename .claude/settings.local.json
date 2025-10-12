@@ -4,7 +4,8 @@
       "Bash(php artisan db:seed:*)",
       "Bash(php artisan make:migration:*)",
       "Bash(php artisan migrate:*)",
-      "Bash(vendor/bin/pint:*)"
+      "Bash(vendor/bin/pint:*)",
+      "mcp__laravel-boost__database-schema"
     ],
     "deny": [],
     "ask": []

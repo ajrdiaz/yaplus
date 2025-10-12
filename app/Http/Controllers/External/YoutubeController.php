@@ -375,7 +375,7 @@ class YoutubeController extends Controller
 
         $products = \App\Models\Product::orderBy('nombre')->get(['id', 'nombre', 'audiencia_objetivo']);
 
-        return Inertia::render('Youtube/Index_Tabs', [
+        return Inertia::render('Youtube/Index', [
             'videosByProduct' => $videosByProduct,
             'products' => $products,
         ]);

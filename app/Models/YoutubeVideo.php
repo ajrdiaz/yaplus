@@ -59,6 +59,14 @@ class YoutubeVideo extends Model
     }
 
     /**
+     * Obtener los buyer personas del video
+     */
+    public function buyerPersonas(): HasMany
+    {
+        return $this->hasMany(YoutubeBuyerPersona::class, 'youtube_video_id');
+    }
+
+    /**
      * Obtener el thumbnail principal (high > medium > default)
      */
     public function getThumbnailAttribute(): ?string
