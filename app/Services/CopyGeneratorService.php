@@ -243,7 +243,7 @@ Crea un anuncio para Facebook/Instagram Ads con los siguientes elementos:
 
 1. TEXTO PRINCIPAL (VERSIÓN CORTA): Máximo 125 caracteres. Debe ser directo, captar atención inmediata y mencionar el beneficio clave usando el ángulo de venta especificado.
 
-2. TEXTO PRINCIPAL (VERSIÓN LARGA): Entre 400 y 700 caracteres. Expande el mensaje, cuenta una historia breve, menciona pain points, beneficios detallados, maneja objeciones y conecta emocionalmente. Usa el tono especificado y las keywords que ellos usan.
+2. TEXTO PRINCIPAL (VERSIÓN LARGA): Entre 400 y 700 caracteres. Expande el mensaje, cuenta una historia breve, menciona pain points, beneficios detallados, maneja objeciones y conecta emocionalmente. Usa el tono especificado y las keywords que ellos usan. IMPORTANTE: Usa saltos de línea cada 2-3 oraciones para mejorar la legibilidad (presiona Enter entre párrafos cortos).
 
 3. TITULAR (VERSIÓN CORTA): Máximo 27 caracteres. Frase ultra-corta y poderosa que capte atención. Debe ser impactante.
 
@@ -252,6 +252,12 @@ Crea un anuncio para Facebook/Instagram Ads con los siguientes elementos:
 5. DESCRIPCIÓN DEL TITULAR: Máximo 60 caracteres. Complemento que expande el titular con información adicional o beneficio secundario.
 
 Asegúrate de trabajar el ángulo de venta especificado de manera prominente en todos los elementos.
+
+CRITERIOS DE CALIDAD QUE DEBEN CUMPLIR TODOS LOS COPYS:
+- Originales y sin rastro de IA. Nada de frases genéricas ni plantillas evidentes.
+- Conversacionales y naturales, como si fueran escritos por un experto humano que conoce el mercado.
+- Estructurados para facilitar la lectura, sin párrafos de más de 150 caracteres.
+- Altamente persuasivos, utilizando técnicas de copywriting direct-response: storytelling, prueba social, ruptura de patrón, beneficios tangibles/intangibles, etc.
 
 Formato de respuesta EXACTO:
 TEXTO_CORTO: [texto]
@@ -482,8 +488,8 @@ KEYWORDS QUE USAN:
                     $variations = [];
 
                     for ($i = 1; $i <= $variationsCount; $i++) {
-                        // Buscar cada variación con su número
-                        $pattern = "/VARIACION_{$i}\s*\n(.+?)(?=VARIACION_\d+|$)/is";
+                        // Buscar cada variación con su número (más flexible: acepta VARIACION, Variacion, Variación con/sin guión bajo o espacio)
+                        $pattern = '/VARIACI[OÓ]N[\s_]'.$i.'[\s:]*\n*(.+?)(?=VARIACI[OÓ]N[\s_]\d+|$)/is';
                         preg_match($pattern, $content, $variationContent);
 
                         if (! empty($variationContent[1])) {
@@ -556,8 +562,8 @@ KEYWORDS QUE USAN:
                     $variations = [];
 
                     for ($i = 1; $i <= $variationsCount; $i++) {
-                        // Buscar cada variación con su número
-                        $pattern = "/VARIACION_{$i}\s*\n(.+?)(?=VARIACION_\d+|$)/is";
+                        // Buscar cada variación con su número (más flexible: acepta VARIACION, Variacion, Variación con/sin guión bajo o espacio)
+                        $pattern = '/VARIACI[OÓ]N[\s_]'.$i.'[\s:]*\n*(.+?)(?=VARIACI[OÓ]N[\s_]\d+|$)/is';
                         preg_match($pattern, $content, $variationContent);
 
                         if (! empty($variationContent[1])) {
@@ -706,7 +712,7 @@ Crea un anuncio para Facebook/Instagram Ads con los siguientes elementos:
 
 1. TEXTO PRINCIPAL (VERSIÓN CORTA): Máximo 125 caracteres. Debe ser directo, captar atención inmediata y mencionar el beneficio clave usando el ángulo de venta especificado.
 
-2. TEXTO PRINCIPAL (VERSIÓN LARGA): Entre 400 y 700 caracteres. Expande el mensaje, cuenta una historia breve, menciona pain points, beneficios detallados, maneja objeciones y conecta emocionalmente. Usa el tono especificado y las keywords que ellos usan.
+2. TEXTO PRINCIPAL (VERSIÓN LARGA): Entre 400 y 700 caracteres. Expande el mensaje, cuenta una historia breve, menciona pain points, beneficios detallados, maneja objeciones y conecta emocionalmente. Usa el tono especificado y las keywords que ellos usan. IMPORTANTE: Usa saltos de línea cada 2-3 oraciones para mejorar la legibilidad (presiona Enter entre párrafos cortos).
 
 3. TITULAR (VERSIÓN CORTA): Máximo 27 caracteres. Frase ultra-corta y poderosa que capte atención. Debe ser impactante.
 
@@ -715,6 +721,12 @@ Crea un anuncio para Facebook/Instagram Ads con los siguientes elementos:
 5. DESCRIPCIÓN DEL TITULAR: Máximo 60 caracteres. Complemento que expande el titular con información adicional o beneficio secundario.
 
 Asegúrate de trabajar el ángulo de venta especificado de manera prominente en todos los elementos.
+
+CRITERIOS DE CALIDAD QUE DEBEN CUMPLIR TODOS LOS COPYS:
+- Originales y sin rastro de IA. Nada de frases genéricas ni plantillas evidentes.
+- Conversacionales y naturales, como si fueran escritos por un experto humano que conoce el mercado.
+- Estructurados para facilitar la lectura, sin párrafos de más de 150 caracteres.
+- Altamente persuasivos, utilizando técnicas de copywriting direct-response: storytelling, prueba social, ruptura de patrón, beneficios tangibles/intangibles, etc.
 
 Formato de respuesta EXACTO:
 TEXTO_CORTO: [texto]
