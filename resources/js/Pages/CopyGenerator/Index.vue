@@ -571,12 +571,12 @@ const getCopyIcon = (copyType) => {
                                                 <div class="space-y-4">
                                                     <!-- Texto Principal Corto -->
                                                     <div v-if="variation.texto_corto">
-                                                        <div class="flex items-center justify-between mb-2">
+                                                        <div class="flex items-center justify-between">
                                                             <label class="text-sm font-semibold text-gray-700">
                                                                 📝 TEXTO PRINCIPAL (VERSIÓN CORTA)
                                                                 <span class="text-xs text-gray-500 ml-2">({{ variation.texto_corto.length }}/125 caracteres)</span>
                                                             </label>
-                                                            <Button icon="pi pi-copy" text rounded @click="copyToClipboard(variation.texto_corto)" v-tooltip.top="'Copiar'" />
+                                                            <Button class="h-auto py-0" icon="pi pi-copy" text rounded @click="copyToClipboard(variation.texto_corto)" v-tooltip.top="'Copiar'" />
                                                         </div>
                                                         <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
                                                             <p class="font-medium">{{ variation.texto_corto }}</p>
@@ -585,12 +585,12 @@ const getCopyIcon = (copyType) => {
 
                                                     <!-- Texto Principal Largo -->
                                                     <div v-if="variation.texto_largo">
-                                                        <div class="flex items-center justify-between mb-2">
+                                                        <div class="flex items-center justify-between mt-2">
                                                             <label class="text-sm font-semibold text-gray-700">
                                                                 📄 TEXTO PRINCIPAL (VERSIÓN LARGA)
                                                                 <span class="text-xs text-gray-500 ml-2">({{ variation.texto_largo.length }}/400-700 caracteres)</span>
                                                             </label>
-                                                            <Button icon="pi pi-copy" text rounded @click="copyToClipboard(variation.texto_largo)" v-tooltip.top="'Copiar'" />
+                                                            <Button class="h-auto py-0" icon="pi pi-copy" text rounded @click="copyToClipboard(variation.texto_largo)" v-tooltip.top="'Copiar'" />
                                                         </div>
                                                         <div class="p-3 bg-purple-50 rounded-lg border border-purple-200">
                                                             <p class="whitespace-pre-wrap">{{ variation.texto_largo }}</p>
@@ -599,12 +599,12 @@ const getCopyIcon = (copyType) => {
 
                                                     <!-- Titular Corto -->
                                                     <div v-if="variation.titular_corto">
-                                                        <div class="flex items-center justify-between mb-2">
+                                                        <div class="flex items-center justify-between mt-2">
                                                             <label class="text-sm font-semibold text-gray-700">
                                                                 🎯 TITULAR (VERSIÓN CORTA)
                                                                 <span class="text-xs text-gray-500 ml-2">({{ variation.titular_corto.length }}/27 caracteres)</span>
                                                             </label>
-                                                            <Button icon="pi pi-copy" text rounded @click="copyToClipboard(variation.titular_corto)" v-tooltip.top="'Copiar'" />
+                                                            <Button class="h-auto py-0" icon="pi pi-copy" text rounded @click="copyToClipboard(variation.titular_corto)" v-tooltip.top="'Copiar'" />
                                                         </div>
                                                         <div class="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                                                             <p class="font-bold text-lg">{{ variation.titular_corto }}</p>
@@ -613,12 +613,12 @@ const getCopyIcon = (copyType) => {
 
                                                     <!-- Titular Largo -->
                                                     <div v-if="variation.titular_largo">
-                                                        <div class="flex items-center justify-between mb-2">
+                                                        <div class="flex items-center justify-between mt-2">
                                                             <label class="text-sm font-semibold text-gray-700">
                                                                 🎯 TITULAR (VERSIÓN LARGA)
                                                                 <span class="text-xs text-gray-500 ml-2">({{ variation.titular_largo.length }}/60 caracteres)</span>
                                                             </label>
-                                                            <Button icon="pi pi-copy" text rounded @click="copyToClipboard(variation.titular_largo)" v-tooltip.top="'Copiar'" />
+                                                            <Button class="h-auto py-0" icon="pi pi-copy" text rounded @click="copyToClipboard(variation.titular_largo)" v-tooltip.top="'Copiar'" />
                                                         </div>
                                                         <div class="p-3 bg-orange-50 rounded-lg border border-orange-200">
                                                             <p class="font-semibold text-base">{{ variation.titular_largo }}</p>
@@ -627,12 +627,12 @@ const getCopyIcon = (copyType) => {
 
                                                     <!-- Descripción del Titular -->
                                                     <div v-if="variation.descripcion">
-                                                        <div class="flex items-center justify-between mb-2">
+                                                        <div class="flex items-center justify-between mt-2">
                                                             <label class="text-sm font-semibold text-gray-700">
                                                                 💬 DESCRIPCIÓN DEL TITULAR
                                                                 <span class="text-xs text-gray-500 ml-2">({{ variation.descripcion.length }}/60 caracteres)</span>
                                                             </label>
-                                                            <Button icon="pi pi-copy" text rounded @click="copyToClipboard(variation.descripcion)" v-tooltip.top="'Copiar'" />
+                                                            <Button class="h-auto py-0" icon="pi pi-copy" text rounded @click="copyToClipboard(variation.descripcion)" v-tooltip.top="'Copiar'" />
                                                         </div>
                                                         <div class="p-3 bg-green-50 rounded-lg border border-green-200">
                                                             <p class="font-medium text-green-800">{{ variation.descripcion }}</p>
@@ -647,12 +647,12 @@ const getCopyIcon = (copyType) => {
                                     <div v-else>
                                         <!-- Texto Principal Corto -->
                                         <div v-if="generatedCopy.additional_data.texto_corto">
-                                            <div class="flex items-center justify-between mb-2">
+                                            <div class="flex items-center justify-between">
                                                 <label class="text-sm font-semibold text-gray-700">
                                                     📝 TEXTO PRINCIPAL (VERSIÓN CORTA)
                                                     <span class="text-xs text-gray-500 ml-2">({{ generatedCopy.additional_data.texto_corto.length }}/125 caracteres)</span>
                                                 </label>
-                                                <Button icon="pi pi-copy" text rounded @click="copyToClipboard(generatedCopy.additional_data.texto_corto)" v-tooltip.top="'Copiar'" />
+                                                <Button class="h-auto py-0" icon="pi pi-copy" text rounded @click="copyToClipboard(generatedCopy.additional_data.texto_corto)" v-tooltip.top="'Copiar'" />
                                             </div>
                                             <div class="p-3 bg-blue-50 rounded-lg border border-blue-200">
                                                 <p class="font-medium">{{ generatedCopy.additional_data.texto_corto }}</p>
@@ -661,12 +661,12 @@ const getCopyIcon = (copyType) => {
 
                                         <!-- Texto Principal Largo -->
                                         <div v-if="generatedCopy.additional_data.texto_largo">
-                                            <div class="flex items-center justify-between mb-2">
+                                            <div class="flex items-center justify-between mt-2">
                                                 <label class="text-sm font-semibold text-gray-700">
                                                     📄 TEXTO PRINCIPAL (VERSIÓN LARGA)
                                                     <span class="text-xs text-gray-500 ml-2">({{ generatedCopy.additional_data.texto_largo.length }}/400-700 caracteres)</span>
                                                 </label>
-                                                <Button icon="pi pi-copy" text rounded @click="copyToClipboard(generatedCopy.additional_data.texto_largo)" v-tooltip.top="'Copiar'" />
+                                                <Button class="h-auto py-0" icon="pi pi-copy" text rounded @click="copyToClipboard(generatedCopy.additional_data.texto_largo)" v-tooltip.top="'Copiar'" />
                                             </div>
                                             <div class="p-3 bg-purple-50 rounded-lg border border-purple-200">
                                                 <p class="whitespace-pre-wrap">{{ generatedCopy.additional_data.texto_largo }}</p>
@@ -675,12 +675,12 @@ const getCopyIcon = (copyType) => {
 
                                         <!-- Titular Corto -->
                                         <div v-if="generatedCopy.additional_data.titular_corto">
-                                            <div class="flex items-center justify-between mb-2">
+                                            <div class="flex items-center justify-between mt-2">
                                                 <label class="text-sm font-semibold text-gray-700">
                                                     🎯 TITULAR (VERSIÓN CORTA)
                                                     <span class="text-xs text-gray-500 ml-2">({{ generatedCopy.additional_data.titular_corto.length }}/27 caracteres)</span>
                                                 </label>
-                                                <Button icon="pi pi-copy" text rounded @click="copyToClipboard(generatedCopy.additional_data.titular_corto)" v-tooltip.top="'Copiar'" />
+                                                <Button class="h-auto py-0" icon="pi pi-copy" text rounded @click="copyToClipboard(generatedCopy.additional_data.titular_corto)" v-tooltip.top="'Copiar'" />
                                             </div>
                                             <div class="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                                                 <p class="font-bold text-lg">{{ generatedCopy.additional_data.titular_corto }}</p>
@@ -689,12 +689,12 @@ const getCopyIcon = (copyType) => {
 
                                         <!-- Titular Largo -->
                                         <div v-if="generatedCopy.additional_data.titular_largo">
-                                            <div class="flex items-center justify-between mb-2">
+                                            <div class="flex items-center justify-between mt-2">
                                                 <label class="text-sm font-semibold text-gray-700">
                                                     🎯 TITULAR (VERSIÓN LARGA)
                                                     <span class="text-xs text-gray-500 ml-2">({{ generatedCopy.additional_data.titular_largo.length }}/60 caracteres)</span>
                                                 </label>
-                                                <Button icon="pi pi-copy" text rounded @click="copyToClipboard(generatedCopy.additional_data.titular_largo)" v-tooltip.top="'Copiar'" />
+                                                <Button class="h-auto py-0" icon="pi pi-copy" text rounded @click="copyToClipboard(generatedCopy.additional_data.titular_largo)" v-tooltip.top="'Copiar'" />
                                             </div>
                                             <div class="p-3 bg-orange-50 rounded-lg border border-orange-200">
                                                 <p class="font-semibold text-base">{{ generatedCopy.additional_data.titular_largo }}</p>
@@ -703,12 +703,12 @@ const getCopyIcon = (copyType) => {
 
                                         <!-- Descripción del Titular -->
                                         <div v-if="generatedCopy.additional_data.descripcion">
-                                            <div class="flex items-center justify-between mb-2">
+                                            <div class="flex items-center justify-between mt-2">
                                                 <label class="text-sm font-semibold text-gray-700">
                                                     💬 DESCRIPCIÓN DEL TITULAR
                                                     <span class="text-xs text-gray-500 ml-2">({{ generatedCopy.additional_data.descripcion.length }}/60 caracteres)</span>
                                                 </label>
-                                                <Button icon="pi pi-copy" text rounded @click="copyToClipboard(generatedCopy.additional_data.descripcion)" v-tooltip.top="'Copiar'" />
+                                                <Button class="h-auto py-0" icon="pi pi-copy" text rounded @click="copyToClipboard(generatedCopy.additional_data.descripcion)" v-tooltip.top="'Copiar'" />
                                             </div>
                                             <div class="p-3 bg-green-50 rounded-lg border border-green-200">
                                                 <p class="font-medium text-green-800">{{ generatedCopy.additional_data.descripcion }}</p>
