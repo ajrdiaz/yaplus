@@ -659,7 +659,16 @@ class YoutubeController extends Controller
         $limit = $request->input('limit', null);
 
         try {
+            // Marcar video como en proceso de análisis
+            $video = YoutubeVideo::findOrFail($videoId);
+            $video->is_analyzing = true;
+            $video->save();
+
             $results = $analysisService->analyzeVideoComments($videoId, $limit);
+
+            // Marcar video como análisis completado
+            $video->is_analyzing = false;
+            $video->save();
 
             return response()->json([
                 'success' => true,
@@ -668,6 +677,13 @@ class YoutubeController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            // Marcar video como análisis fallido
+            $video = YoutubeVideo::find($videoId);
+            if ($video) {
+                $video->is_analyzing = false;
+                $video->save();
+            }
+
             Log::error('Error al analizar comentarios', [
                 'video_id' => $videoId,
                 'error' => $e->getMessage(),

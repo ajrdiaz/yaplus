@@ -318,6 +318,15 @@ function getPriorityIcon(priority) {
                         <div class="flex gap-2">
                             <Tag :value="`${video.comments_count} comentarios`" severity="info" />
                             <Tag :value="`${analyses.length} analizados`" severity="success" />
+                            <Button
+                                v-if="video.is_analyzing"
+                                icon="pi pi-refresh"
+                                label="Actualizar"
+                                severity="warning"
+                                outlined
+                                size="small"
+                                @click="router.reload()"
+                            />
                         </div>
                     </div>
                     <div v-if="video.channel_title" class="mt-2 text-600">
@@ -496,81 +505,98 @@ function getPriorityIcon(priority) {
                             </div>
 
                             <!-- Tabla -->
-                            <DataTable
-                                :value="filteredAnalyses"
-                                :paginator="true"
-                                :rows="10"
-                                responsiveLayout="scroll"
-                                class="p-datatable-sm"
-                            >
-                                <Column header="Comentario" style="min-width: 300px">
-                                    <template #body="{ data }">
-                                        <div class="text-sm">
-                                            {{ data.comment?.text?.substring(0, 150) }}
-                                            <span v-if="data.comment?.text?.length > 150">...</span>
-                                        </div>
-                                        <small class="text-500">
-                                            {{ formatDate(data.comment?.published_at) }}
-                                        </small>
-                                    </template>
-                                </Column>
+                                <div v-if="analyses.length === 0" class="text-center py-5">
+                                    <i class="pi pi-spin pi-spinner text-6xl text-primary mb-3"></i>
+                                    <p class="text-primary text-xl font-bold">Procesando Análisis IA...</p>
+                                    <p class="text-500">
+                                        {{ video.is_analyzing ? 'El análisis está en proceso. Los resultados aparecerán aquí a medida que se generen.' : 'Aún no hay análisis disponibles para este video.' }}
+                                    </p>
+                                    <Button
+                                        v-if="video.is_analyzing"
+                                        icon="pi pi-refresh"
+                                        label="Actualizar progreso"
+                                        severity="primary"
+                                        outlined
+                                        @click="router.reload()"
+                                        class="mt-3"
+                                    />
+                                </div>
+                                <DataTable
+                                    v-else
+                                    :value="filteredAnalyses"
+                                    :paginator="true"
+                                    :rows="10"
+                                    responsiveLayout="scroll"
+                                    class="p-datatable-sm"
+                                >
+                                    <Column header="Comentario" style="min-width: 300px">
+                                        <template #body="{ data }">
+                                            <div class="text-sm">
+                                                {{ data.comment?.text?.substring(0, 150) }}
+                                                <span v-if="data.comment?.text?.length > 150">...</span>
+                                            </div>
+                                            <small class="text-500">
+                                                {{ formatDate(data.comment?.published_at) }}
+                                            </small>
+                                        </template>
+                                    </Column>
 
-                                <Column header="Categoría" style="min-width: 150px">
-                                    <template #body="{ data }">
-                                        <Tag
-                                            :value="getCategoryLabel(data.category)"
-                                            :severity="getCategorySeverity(data.category)"
-                                        />
-                                    </template>
-                                </Column>
-
-                                <Column header="Sentimiento" style="min-width: 120px">
-                                    <template #body="{ data }">
-                                        <Tag
-                                            :value="data.sentiment"
-                                            :severity="getSentimentSeverity(data.sentiment)"
-                                        />
-                                    </template>
-                                </Column>
-
-                                <Column header="Relevancia" style="min-width: 120px">
-                                    <template #body="{ data }">
-                                        <div class="flex align-items-center gap-2">
-                                            <ProgressBar
-                                                :value="data.relevance_score * 10"
-                                                :showValue="false"
-                                                style="height: 6px; width: 60px"
-                                            />
-                                            <span class="text-sm">{{ data.relevance_score }}/10</span>
-                                        </div>
-                                    </template>
-                                </Column>
-
-                                <Column header="Análisis IA" style="min-width: 400px">
-                                    <template #body="{ data }">
-                                        <div class="text-sm text-900">
-                                            {{ data.ia_analysis }}
-                                        </div>
-                                        <div v-if="data.keywords && data.keywords.length > 0" class="mt-2">
+                                    <Column header="Categoría" style="min-width: 150px">
+                                        <template #body="{ data }">
                                             <Tag
-                                                v-for="(keyword, index) in data.keywords.slice(0, 3)"
-                                                :key="index"
-                                                :value="keyword"
-                                                severity="secondary"
-                                                class="mr-1"
-                                                rounded
+                                                :value="getCategoryLabel(data.category)"
+                                                :severity="getCategorySeverity(data.category)"
                                             />
+                                        </template>
+                                    </Column>
+
+                                    <Column header="Sentimiento" style="min-width: 120px">
+                                        <template #body="{ data }">
+                                            <Tag
+                                                :value="data.sentiment"
+                                                :severity="getSentimentSeverity(data.sentiment)"
+                                            />
+                                        </template>
+                                    </Column>
+
+                                    <Column header="Relevancia" style="min-width: 120px">
+                                        <template #body="{ data }">
+                                            <div class="flex align-items-center gap-2">
+                                                <ProgressBar
+                                                    :value="data.relevance_score * 10"
+                                                    :showValue="false"
+                                                    style="height: 6px; width: 60px"
+                                                />
+                                                <span class="text-sm">{{ data.relevance_score }}/10</span>
+                                            </div>
+                                        </template>
+                                    </Column>
+
+                                    <Column header="Análisis IA" style="min-width: 400px">
+                                        <template #body="{ data }">
+                                            <div class="text-sm text-900">
+                                                {{ data.ia_analysis }}
+                                            </div>
+                                            <div v-if="data.keywords && data.keywords.length > 0" class="mt-2">
+                                                <Tag
+                                                    v-for="(keyword, index) in data.keywords.slice(0, 3)"
+                                                    :key="index"
+                                                    :value="keyword"
+                                                    severity="secondary"
+                                                    class="mr-1"
+                                                    rounded
+                                                />
+                                            </div>
+                                        </template>
+                                    </Column>
+
+                                    <template #empty>
+                                        <div class="text-center py-5">
+                                            <i class="pi pi-inbox text-6xl text-400 mb-3"></i>
+                                            <p class="text-500 text-xl">No hay análisis que coincidan con los filtros</p>
                                         </div>
                                     </template>
-                                </Column>
-
-                                <template #empty>
-                                    <div class="text-center py-5">
-                                        <i class="pi pi-inbox text-6xl text-400 mb-3"></i>
-                                        <p class="text-500 text-xl">No hay análisis que coincidan con los filtros</p>
-                                    </div>
-                                </template>
-                            </DataTable>
+                                </DataTable>
                         </TabPanel>
 
                         <!-- Tab 4: Insights -->

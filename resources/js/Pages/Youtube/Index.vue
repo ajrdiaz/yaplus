@@ -226,8 +226,13 @@ const analyzeVideoWithAI = (video) => {
                 life: 5000
             });
             
+            // Recargar la página para actualizar el estado del video
+            router.reload({ only: ['videos'] });
+            
             // Cargar análisis automáticamente
-            loadAnalysis(video);
+            setTimeout(() => {
+                loadAnalysis(video);
+            }, 500);
         }
     })
     .catch(error => {
@@ -237,6 +242,9 @@ const analyzeVideoWithAI = (video) => {
             detail: error.response?.data?.message || 'Error al analizar comentarios',
             life: 5000
         });
+        
+        // Recargar para resetear el estado en caso de error
+        router.reload({ only: ['videos'] });
     })
     .finally(() => {
         loadingAnalysis.value = false;
@@ -580,9 +588,9 @@ const deleteVideo = (video) => {
                                                         <Button
                                                             icon="pi pi-chart-bar"
                                                             size="small"
-                                                            severity="help"
+                                                            :severity="video.is_analyzing ? 'warning' : 'help'"
                                                             @click="loadAnalysis(video)"
-                                                            v-tooltip.top="'Ver análisis IA'"
+                                                            v-tooltip.top="video.is_analyzing ? 'Ver progreso del análisis IA' : 'Ver análisis IA'"
                                                             :badge="video.analyses_count > 0 ? video.analyses_count.toString() : null"
                                                             badgeSeverity="success"
                                                         />
