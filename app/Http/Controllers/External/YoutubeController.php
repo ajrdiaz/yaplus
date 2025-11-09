@@ -718,11 +718,17 @@ class YoutubeController extends Controller
             // Cargar buyer personas existentes
             $existingPersonas = \App\Models\YoutubeBuyerPersona::where('youtube_video_id', $videoId)->get();
 
+            // Cargar ángulos de venta existentes
+            $existingAngles = \App\Models\YoutubeSalesAngle::where('youtube_video_id', $videoId)
+                ->orderBy('orden')
+                ->get();
+
             return inertia('Youtube/Analysis', [
                 'video' => $video,
                 'analyses' => $analyses,
                 'stats' => $stats,
                 'existingPersonas' => $existingPersonas,
+                'existingAngles' => $existingAngles,
             ]);
 
         } catch (\Exception $e) {
@@ -821,6 +827,43 @@ class YoutubeController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al eliminar el video',
+            ], 500);
+        }
+    }
+
+    /**
+     * Generar ángulos de venta a partir de análisis de comentarios
+     *
+     * @param  int  $videoId
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function generateSalesAngles($videoId, CommentAnalysisService $analysisService)
+    {
+        try {
+            $result = $analysisService->generateSalesAngles($videoId);
+
+            if (! $result['success']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $result['message'] ?? 'Error al generar ángulos de venta',
+                ], 400);
+            }
+
+            return response()->json([
+                'success' => true,
+                'angles' => $result['angles'],
+                'metadata' => $result['metadata'],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error generating sales angles', [
+                'video_id' => $videoId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar ángulos de venta',
             ], 500);
         }
     }

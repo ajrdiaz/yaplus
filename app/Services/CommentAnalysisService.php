@@ -6,6 +6,7 @@ use App\Models\YoutubeComment;
 use App\Models\YoutubeCommentAnalysis;
 use App\Models\YoutubeVideo;
 use App\Models\YoutubeBuyerPersona;
+use App\Models\YoutubeSalesAngle;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -607,5 +608,330 @@ PROMPT;
         }
 
         return $summary;
+    }
+
+    /**
+     * Generar 10 ángulos de venta basados en análisis de comentarios
+     *
+     * @param int $videoId
+     * @return array
+     */
+    public function generateSalesAngles($videoId)
+    {
+        try {
+            $video = YoutubeVideo::with('product')->findOrFail($videoId);
+            
+            // Obtener todos los análisis
+            $analyses = YoutubeCommentAnalysis::where('youtube_video_id', $videoId)
+                ->where('is_relevant', true)
+                ->with('comment')
+                ->orderBy('relevance_score', 'desc')
+                ->take(100)
+                ->get();
+
+            if ($analyses->isEmpty()) {
+                return [
+                    'success' => false,
+                    'message' => 'No hay análisis disponibles para generar ángulos de venta',
+                ];
+            }
+
+            // Obtener buyer personas existentes si los hay
+            $buyerPersonas = YoutubeBuyerPersona::where('youtube_video_id', $videoId)->get();
+
+            // Preparar datos resumidos
+            $analysisData = $this->prepareAnalysisDataForAngles($analyses);
+            $personasData = $this->prepareBuyerPersonasData($buyerPersonas);
+
+            // Construir el prompt
+            $prompt = $this->buildSalesAnglesPrompt($video, $analysisData, $personasData);
+
+            // Llamar a OpenAI
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Content-Type' => 'application/json',
+            ])->timeout(120)->post('https://api.openai.com/v1/chat/completions', [
+                'model' => $this->model,
+                'messages' => [
+                    [
+                        'role' => 'system',
+                        'content' => 'Eres un experto copywriter y estratega de marketing directo. Tu trabajo es crear ángulos de venta persuasivos y efectivos basados en investigación real de audiencia.'
+                    ],
+                    [
+                        'role' => 'user',
+                        'content' => $prompt
+                    ]
+                ],
+                'temperature' => 0.8,
+                'max_tokens' => 4000,
+            ]);
+
+            if (!$response->successful()) {
+                Log::error('OpenAI API error generating sales angles', [
+                    'status' => $response->status(),
+                    'body' => $response->body()
+                ]);
+                return [
+                    'success' => false,
+                    'message' => 'Error al generar ángulos de venta con OpenAI',
+                ];
+            }
+
+            $result = $response->json();
+            $content = $result['choices'][0]['message']['content'] ?? null;
+
+            if (!$content) {
+                return [
+                    'success' => false,
+                    'message' => 'No se recibió respuesta de OpenAI',
+                ];
+            }
+
+            // Parsear JSON de la respuesta
+            $content = trim($content);
+            if (str_starts_with($content, '```json')) {
+                $content = preg_replace('/```json\s*/', '', $content);
+                $content = preg_replace('/```\s*$/', '', $content);
+            }
+
+            $anglesData = json_decode($content, true);
+
+            if (!$anglesData || !isset($anglesData['angles'])) {
+                Log::error('Invalid JSON response from OpenAI for sales angles', [
+                    'content' => $content
+                ]);
+                return [
+                    'success' => false,
+                    'message' => 'Respuesta inválida de OpenAI',
+                ];
+            }
+
+            // Eliminar ángulos anteriores
+            YoutubeSalesAngle::where('youtube_video_id', $videoId)->delete();
+
+            // Guardar los nuevos ángulos
+            $savedAngles = [];
+            foreach ($anglesData['angles'] as $index => $angleData) {
+                $angle = YoutubeSalesAngle::create([
+                    'youtube_video_id' => $videoId,
+                    'titulo' => $angleData['titulo'],
+                    'descripcion' => $angleData['descripcion'],
+                    'copy_ejemplo' => $angleData['copy_ejemplo'],
+                    'enfoque' => $angleData['enfoque'] ?? null,
+                    'tipo_contenido' => $angleData['tipo_contenido'] ?? null,
+                    'orden' => $index + 1,
+                ]);
+                $savedAngles[] = $angle;
+            }
+
+            return [
+                'success' => true,
+                'angles' => $savedAngles,
+                'metadata' => [
+                    'total_angles' => count($savedAngles),
+                    'based_on_analyses' => $analyses->count(),
+                    'based_on_personas' => $buyerPersonas->count(),
+                ]
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Error generating sales angles', [
+                'video_id' => $videoId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Error al generar ángulos de venta: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * Preparar datos de análisis para ángulos de venta
+     */
+    private function prepareAnalysisDataForAngles($analyses)
+    {
+        $summary = [
+            'categorias' => [],
+            'sentimientos' => [],
+            'pain_points' => [],
+            'suenos' => [],
+            'objeciones' => [],
+            'keywords' => [],
+        ];
+
+        foreach ($analyses as $analysis) {
+            // Categorías
+            $cat = $analysis->category ?? 'desconocida';
+            $summary['categorias'][$cat] = ($summary['categorias'][$cat] ?? 0) + 1;
+
+            // Sentimientos
+            $sent = $analysis->sentiment ?? 'neutral';
+            $summary['sentimientos'][$sent] = ($summary['sentimientos'][$sent] ?? 0) + 1;
+
+            // Insights
+            if ($analysis->insights && is_array($analysis->insights)) {
+                if (isset($analysis->insights['pain_point'])) {
+                    $summary['pain_points'][] = $analysis->insights['pain_point'];
+                }
+                if (isset($analysis->insights['opportunity'])) {
+                    $summary['suenos'][] = $analysis->insights['opportunity'];
+                }
+            }
+
+            // Objeciones específicas
+            if ($analysis->category === 'objecion') {
+                $summary['objeciones'][] = substr($analysis->ia_analysis, 0, 150);
+            }
+
+            // Keywords
+            if ($analysis->keywords && is_array($analysis->keywords)) {
+                $summary['keywords'] = array_merge($summary['keywords'], $analysis->keywords);
+            }
+        }
+
+        // Top keywords
+        $keywordCounts = array_count_values($summary['keywords']);
+        arsort($keywordCounts);
+        $summary['keywords'] = array_slice(array_keys($keywordCounts), 0, 20);
+
+        // Limitar arrays
+        $summary['pain_points'] = array_slice($summary['pain_points'], 0, 10);
+        $summary['suenos'] = array_slice($summary['suenos'], 0, 10);
+        $summary['objeciones'] = array_slice($summary['objeciones'], 0, 10);
+
+        return $summary;
+    }
+
+    /**
+     * Preparar datos de buyer personas
+     */
+    private function prepareBuyerPersonasData($buyerPersonas)
+    {
+        if ($buyerPersonas->isEmpty()) {
+            return null;
+        }
+
+        return $buyerPersonas->map(function ($persona) {
+            return [
+                'nombre' => $persona->nombre,
+                'descripcion' => $persona->descripcion,
+                'motivaciones' => is_array($persona->motivaciones) ? array_slice($persona->motivaciones, 0, 3) : [],
+                'pain_points' => is_array($persona->pain_points) ? array_slice($persona->pain_points, 0, 3) : [],
+                'objeciones' => is_array($persona->objeciones) ? array_slice($persona->objeciones, 0, 3) : [],
+            ];
+        })->toArray();
+    }
+
+    /**
+     * Construir prompt para generar ángulos de venta
+     */
+    private function buildSalesAnglesPrompt($video, $analysisData, $personasData)
+    {
+        $productInfo = '';
+        if ($video->product) {
+            $productInfo = "PRODUCTO/SERVICIO:\n";
+            $productInfo .= "Nombre: {$video->product->name}\n";
+            $productInfo .= "Descripción: {$video->product->description}\n";
+            $productInfo .= "Propuesta de Valor: {$video->product->value_proposition}\n\n";
+        }
+
+        $personasInfo = '';
+        if ($personasData) {
+            $personasInfo = "BUYER PERSONAS IDENTIFICADOS:\n";
+            foreach ($personasData as $i => $persona) {
+                $personasInfo .= ($i + 1) . ". {$persona['nombre']}: {$persona['descripcion']}\n";
+                $personasInfo .= "   - Motivaciones: " . implode(', ', $persona['motivaciones']) . "\n";
+                $personasInfo .= "   - Pain Points: " . implode(', ', $persona['pain_points']) . "\n";
+            }
+            $personasInfo .= "\n";
+        }
+
+        return <<<PROMPT
+Basándote en el análisis real de comentarios de YouTube, genera 10 ÁNGULOS DE VENTA únicos y persuasivos para crear copys de anuncios y contenido de marketing.
+
+{$productInfo}{$personasInfo}
+DATOS DEL ANÁLISIS DE AUDIENCIA:
+
+Distribución por Categorías:
+{$this->formatArrayAsString($analysisData['categorias'])}
+
+Distribución por Sentimiento:
+{$this->formatArrayAsString($analysisData['sentimientos'])}
+
+PRINCIPALES PAIN POINTS DETECTADOS:
+{$this->formatListAsString($analysisData['pain_points'])}
+
+PRINCIPALES ASPIRACIONES/SUEÑOS:
+{$this->formatListAsString($analysisData['suenos'])}
+
+OBJECIONES PRINCIPALES:
+{$this->formatListAsString($analysisData['objeciones'])}
+
+PALABRAS CLAVE MÁS FRECUENTES:
+{$this->formatListAsString($analysisData['keywords'])}
+
+---
+
+INSTRUCCIONES:
+Genera 10 ángulos de venta ÚNICOS Y DIFERENTES entre sí. Cada ángulo debe:
+
+1. Ser específico y accionable
+2. Basarse en insights reales de la audiencia
+3. Incluir un ejemplo de copy listo para usar
+4. Abordar diferentes aspectos: pain points, sueños, objeciones, urgencia, prueba social, etc.
+5. Variar en enfoque y tono
+
+FORMATO REQUERIDO (JSON):
+{
+  "angles": [
+    {
+      "titulo": "Nombre corto del ángulo",
+      "descripcion": "Por qué este ángulo es efectivo y a qué insight de la audiencia responde (2-3 líneas)",
+      "copy_ejemplo": "Ejemplo de copy de 30-50 palabras listo para usar en anuncio o landing page",
+      "enfoque": "dolor | sueño | objecion | urgencia | prueba_social | transformacion | garantia | exclusividad",
+      "tipo_contenido": "anuncio | landing | email | social_media"
+    }
+  ]
+}
+
+CRITERIOS DE CALIDAD:
+- Cada ángulo debe ser ÚNICO y no repetir el mismo enfoque
+- Los copies deben ser específicos, no genéricos
+- Usa las palabras clave y lenguaje de la audiencia
+- Aborda los pain points y objeciones reales detectados
+- Incluye variedad: algunos enfocados en dolor, otros en aspiración, otros en objeciones, etc.
+
+RESPONDE ÚNICAMENTE CON EL JSON, SIN TEXTO ADICIONAL.
+PROMPT;
+    }
+
+    /**
+     * Formatear array como string
+     */
+    private function formatArrayAsString($array)
+    {
+        $result = '';
+        foreach ($array as $key => $value) {
+            $result .= "- {$key}: {$value}\n";
+        }
+        return $result;
+    }
+
+    /**
+     * Formatear lista como string
+     */
+    private function formatListAsString($list)
+    {
+        if (empty($list)) {
+            return "- No disponible\n";
+        }
+        $result = '';
+        foreach ($list as $i => $item) {
+            $result .= ($i + 1) . ". {$item}\n";
+        }
+        return $result;
     }
 }

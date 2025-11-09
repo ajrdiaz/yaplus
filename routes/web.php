@@ -32,6 +32,7 @@ Route::middleware([
         Route::get('/videos/{video}/analysis', [YoutubeController::class, 'getAnalysis'])->name('video.analysis');
         Route::post('/analysis/filter', [YoutubeController::class, 'filterAnalysis'])->name('analysis.filter');
         Route::post('/videos/{video}/buyer-personas', [YoutubeController::class, 'generateBuyerPersonas'])->name('video.buyerPersonas');
+        Route::post('/videos/{video}/sales-angles', [YoutubeController::class, 'generateSalesAngles'])->name('video.salesAngles');
     });
 
     // Google Forms Routes

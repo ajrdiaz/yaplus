@@ -30,6 +30,10 @@ const props = defineProps({
     existingPersonas: {
         type: Array,
         default: () => []
+    },
+    existingAngles: {
+        type: Array,
+        default: () => []
     }
 });
 
@@ -42,6 +46,11 @@ const selectedSentiment = ref(null);
 const buyerPersonas = ref(props.existingPersonas || []);
 const loadingPersonas = ref(false);
 const personasGenerated = ref(props.existingPersonas && props.existingPersonas.length > 0);
+
+// Sales Angles
+const salesAngles = ref(props.existingAngles || []);
+const loadingAngles = ref(false);
+const anglesGenerated = computed(() => salesAngles.value && salesAngles.value.length > 0);
 
 const categories = [
     { label: 'Todas', value: null },
@@ -276,6 +285,42 @@ async function generateBuyerPersonas() {
         }
     } finally {
         loadingPersonas.value = false;
+    }
+}
+
+// Generar Sales Angles
+async function generateSalesAngles() {
+    if (loadingAngles.value) return;
+    
+    loadingAngles.value = true;
+    
+    try {
+        const response = await window.axios.post(route('youtube.video.salesAngles', props.video.id));
+        
+        if (response.data.success) {
+            salesAngles.value = response.data.angles;
+        } else {
+            alert(response.data.message || 'Error al generar ángulos de venta');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        if (error.response && error.response.data && error.response.data.message) {
+            alert(error.response.data.message);
+        } else {
+            alert('Error al generar ángulos de venta');
+        }
+    } finally {
+        loadingAngles.value = false;
+    }
+}
+
+// Copiar texto al portapapeles
+async function copyToClipboard(text) {
+    try {
+        await navigator.clipboard.writeText(text);
+        // Aquí podrías agregar una notificación toast si quieres
+    } catch (err) {
+        console.error('Error al copiar:', err);
     }
 }
 
@@ -870,6 +915,105 @@ function getPriorityIcon(priority) {
                                                         <p class="text-800 font-medium m-0">{{ persona.estrategia_recomendada }}</p>
                                                     </div>
                                                 </div>
+                                            </div>
+                                        </template>
+                                    </Card>
+                                </div>
+                            </div>
+                        </TabPanel>
+
+                        <!-- Tab 6: Ángulos de Venta -->
+                        <TabPanel header="📢 Ángulos de Venta">
+                            <!-- Botón para generar -->
+                            <div v-if="!anglesGenerated" class="text-center py-8">
+                                <div class="mb-4">
+                                    <i class="pi pi-megaphone text-6xl text-primary mb-3"></i>
+                                    <h3 class="text-2xl font-semibold text-900 mb-2">Generar Ángulos de Venta</h3>
+                                    <p class="text-600 mb-4">
+                                        La IA analizará los insights de tu audiencia y generará 10 ángulos únicos<br>
+                                        para crear copys de anuncios altamente persuasivos.
+                                    </p>
+                                </div>
+                                <Button
+                                    label="Generar 10 Ángulos con IA"
+                                    icon="pi pi-sparkles"
+                                    severity="primary"
+                                    size="large"
+                                    :loading="loadingAngles"
+                                    @click="generateSalesAngles"
+                                    class="px-6"
+                                />
+                            </div>
+
+                            <!-- Ángulos de Venta generados -->
+                            <div v-else class="grid">
+                                <div class="col-12 mb-3">
+                                    <div class="flex justify-content-between align-items-center">
+                                        <h3 class="text-xl font-semibold text-900 m-0">
+                                            10 Ángulos de Venta para tus Anuncios
+                                        </h3>
+                                        <Button
+                                            label="Regenerar"
+                                            icon="pi pi-refresh"
+                                            severity="secondary"
+                                            outlined
+                                            size="small"
+                                            :loading="loadingAngles"
+                                            @click="generateSalesAngles"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div
+                                    v-for="angle in salesAngles"
+                                    :key="angle.id"
+                                    class="col-12 md:col-6"
+                                >
+                                    <Card class="shadow-3 h-full">
+                                        <template #content>
+                                            <!-- Header del Ángulo -->
+                                            <div class="flex justify-content-between align-items-start mb-3 pb-3 border-bottom-1 surface-border">
+                                                <div class="flex-1">
+                                                    <div class="flex align-items-center gap-2 mb-2">
+                                                        <Badge :value="`#${angle.orden}`" severity="info" />
+                                                        <h4 class="text-xl font-bold text-900 m-0">{{ angle.titulo }}</h4>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <!-- Descripción -->
+                                            <div class="mb-3">
+                                                <p class="text-700 text-sm line-height-3 m-0">
+                                                    {{ angle.descripcion }}
+                                                </p>
+                                            </div>
+
+                                            <!-- Copy Ejemplo -->
+                                            <div class="p-3 bg-blue-50 border-round mb-3">
+                                                <div class="flex justify-content-between align-items-center mb-2">
+                                                    <h5 class="text-900 font-semibold m-0 text-sm flex align-items-center gap-2">
+                                                        <i class="pi pi-file-edit text-blue-600"></i>
+                                                        Copy Listo para Usar
+                                                    </h5>
+                                                    <Button
+                                                        icon="pi pi-copy"
+                                                        severity="secondary"
+                                                        text
+                                                        rounded
+                                                        size="small"
+                                                        @click="copyToClipboard(angle.copy_ejemplo)"
+                                                        v-tooltip.top="'Copiar copy'"
+                                                    />
+                                                </div>
+                                                <p class="text-800 font-medium text-sm line-height-3 m-0">
+                                                    "{{ angle.copy_ejemplo }}"
+                                                </p>
+                                            </div>
+
+                                            <!-- Tags: Enfoque y Tipo -->
+                                            <div class="flex flex-wrap gap-2">
+                                                <Tag :value="angle.enfoque" severity="success" icon="pi pi-bolt" />
+                                                <Tag :value="angle.tipo_contenido" severity="secondary" icon="pi pi-tag" />
                                             </div>
                                         </template>
                                     </Card>
